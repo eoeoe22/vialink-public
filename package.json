@@ -1,0 +1,22 @@
+{
+  "name": "vialinks",
+  "version": "1.0.0",
+  "description": "VIA Link Shortener - Cloudflare Workers backend",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "url-shortener",
+    "kv"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.33.1"
+  }
+}

@@ -1,0 +1,31 @@
+name = "vialinks"
+main = "index.js"
+compatibility_date = "2024-03-20"
+
+
+[[kv_namespaces]]
+binding = "vialinks" 
+id = "a262076b72794777a6f728c8dd96e0e3" 
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "vialinks"
+
+
+[vars]
+TURNSTILE_SITE_KEY = ""
+TURNSTILE_SECRET_KEY = ""
+
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1.0
+
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html", "**/*.css", "**/404.js"]
+fallthrough = true
