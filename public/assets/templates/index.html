@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="ko" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <title>VIALinks</title>
+    <meta name="description" content="링크, 텍스트 단축">
+    <meta property="og:title" content="VIALinks">
+    <meta property="og:description" content="링크, 텍스트 단축">
+    <meta property="og:image" content="https://sekaich.at/images/etc/viapreview.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta name="theme-color" content="#87CEEB">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="icon" href="/favicon.jpg">
+    <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+    <div class="main">
+        <div class="forms-slider">
+            <div class="forms-track" id="forms-track">
+                <div class="container a-container" id="a-container">
+                    <form class="form" id="a-form">
+                        <h2 class="form_title title">Short URL 생성</h2>
+                        <br><br>
+                        <input id="key" class="form__input" type="text" placeholder="KEY | https://{{DOMAIN}}/KEY">
+                        <input id="url" class="form__input" type="text" placeholder="URL | https://example.com">
+                        <div class="form-group-wrapper">
+                            <div class="checkbox-row">
+                                <div class="form-group">
+                                    <input type="checkbox" id="expires_checkbox" class="form__checkbox" checked>
+                                    <label for="expires_checkbox" class="form__label"><i
+                                            class="bi bi-clock-history"></i> 24시간 후
+                                        만료</label>
+                                </div>
+                                <div class="form-group">
+                                    <input type="checkbox" id="password_checkbox" class="form__checkbox">
+                                    <label for="password_checkbox" class="form__label"><i class="bi bi-lock"></i> 비밀번호
+                                        설정</label>
+                                </div>
+                            </div>
+                            <div id="expires_options" class="form-group" style="display: none;">
+                                <div class="custom-select-wrapper">
+                                    <select id="expires_in" style="display: none;">
+                                        <option value="3600">1시간</option>
+                                        <option value="21600">6시간</option>
+                                        <option value="86400">24시간</option>
+                                        <option value="604800" selected>7일</option>
+                                    </select>
+                                    <div class="custom-select" id="custom_expires_in">
+                                        <div class="custom-select__trigger">
+                                            <span>7일</span>
+                                            <i class="bi bi-chevron-down"></i>
+                                        </div>
+                                        <div class="custom-select__options">
+                                            <div class="custom-select__option" data-value="3600">1시간</div>
+                                            <div class="custom-select__option" data-value="21600">6시간</div>
+                                            <div class="custom-select__option" data-value="86400">24시간</div>
+                                            <div class="custom-select__option selected" data-value="604800">7일</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="password_options" class="form-group" style="display: none;">
+                                <div class="password-input-wrapper">
+                                    <input type="password" id="share_lock_code" name="access_code" class="form__input"
+                                        placeholder="공유용 임시 비밀번호" autocomplete="off">
+                                    <button type="button" id="btn_toggle_share_key" class="toggle-password-btn"><i
+                                            class="bi bi-eye"></i></button>
+                                </div>
+                                <div class="password-tools-row">
+                                    <button type="button" class="password-tool-btn" id="generate_password_btn">비밀번호
+                                        생성</button>
+                                    <button type="button" class="password-tool-btn" id="copy_password_btn">복사</button>
+                                    <span id="password_copy_status" class="password-copy-status"></span>
+                                </div>
+                                <div class="password-strength-wrap">
+                                    <div class="password-strength-head">
+                                        <span>강도</span>
+                                        <span id="password_strength_label">약함</span>
+                                    </div>
+                                    <div class="password-strength-meter">
+                                        <div id="password_strength_bar" class="password-strength-fill strength-weak">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="turnstile-container">
+                            <div class="cf-turnstile" data-sitekey="{{TURNSTILE_SITE_KEY}}"
+                                data-callback="onTurnstileSuccess">
+                            </div>
+                        </div>
+
+                        <button id="gen" class="form__button button submit" type="button" disabled>생성하기</button>
+                    </form>
+                </div>
+
+                <div class="container b-container" id="b-container">
+                    <form class="form" id="b-form">
+                        <h2 class="form_title title">텍스트 공유하기</h2>
+                        <br>
+                        <input id="paste_key" class="form__input" type="text" placeholder="키 (선택)">
+                        <textarea id="paste_content" class="form__input"
+                            style="height: 120px; padding-top: 10px; resize: none;" placeholder="내용"></textarea>
+
+                        <div class="form-group-wrapper">
+                            <div class="checkbox-row">
+                                <div class="form-group">
+                                    <input type="checkbox" id="paste_expires_checkbox" class="form__checkbox" checked>
+                                    <label for="paste_expires_checkbox" class="form__label"><i
+                                            class="bi bi-clock-history"></i>
+                                        24시간 후 만료</label>
+                                </div>
+                                <div class="form-group">
+                                    <input type="checkbox" id="paste_password_checkbox" class="form__checkbox">
+                                    <label for="paste_password_checkbox" class="form__label"><i class="bi bi-lock"></i>
+                                        비밀번호
+                                        설정</label>
+                                </div>
+                            </div>
+                            <div id="paste_expires_options" class="form-group" style="display: none;">
+                                <div class="custom-select-wrapper">
+                                    <select id="paste_expires_in" style="display: none;">
+                                        <option value="3600">1시간</option>
+                                        <option value="21600">6시간</option>
+                                        <option value="86400">24시간</option>
+                                        <option value="604800" selected>7일</option>
+                                    </select>
+                                    <div class="custom-select" id="custom_paste_expires_in">
+                                        <div class="custom-select__trigger">
+                                            <span>7일</span>
+                                            <i class="bi bi-chevron-down"></i>
+                                        </div>
+                                        <div class="custom-select__options">
+                                            <div class="custom-select__option" data-value="3600">1시간</div>
+                                            <div class="custom-select__option" data-value="21600">6시간</div>
+                                            <div class="custom-select__option" data-value="86400">24시간</div>
+                                            <div class="custom-select__option selected" data-value="604800">7일</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="paste_password_options" class="form-group" style="display: none;">
+                                <div class="password-input-wrapper">
+                                    <input type="password" id="share_lock_code_paste" name="access_code_paste"
+                                        class="form__input" placeholder="공유용 임시 비밀번호" autocomplete="off">
+                                    <button type="button" id="btn_toggle_share_key_paste" class="toggle-password-btn"><i
+                                            class="bi bi-eye"></i></button>
+                                </div>
+                                <div class="password-tools-row">
+                                    <button type="button" class="password-tool-btn"
+                                        id="generate_password_btn_paste">비밀번호
+                                        생성</button>
+                                    <button type="button" class="password-tool-btn"
+                                        id="copy_password_btn_paste">복사</button>
+                                    <span id="password_copy_status_paste" class="password-copy-status"></span>
+                                </div>
+                                <div class="password-strength-wrap">
+                                    <div class="password-strength-head">
+                                        <span>강도</span>
+                                        <span id="password_strength_label_paste">약함</span>
+                                    </div>
+                                    <div class="password-strength-meter">
+                                        <div id="password_strength_bar_paste"
+                                            class="password-strength-fill strength-weak">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="turnstile-container">
+                            <div id="turnstile-paste" class="cf-turnstile" data-sitekey="{{TURNSTILE_SITE_KEY}}"
+                                data-callback="onTurnstilePasteSuccess">
+                            </div>
+                        </div>
+
+                        <button id="paste_btn" class="form__button button submit" type="button" disabled>텍스트 저장</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="switch" id="switch-cnt">
+            <div class="switch__circle"></div>
+            <div class="switch__circle switch__circle--t"></div>
+            <div class="switch__container" id="switch-c1">
+                <h2 class="switch__title title">VIALinks</h2>
+                <button class="switch__button button switch-btn" type="button">텍스트 공유하기</button>
+
+                <div id="lookup-container"
+                    style="margin-top: 20px; display: flex; gap: 15px; justify-content: center; z-index: 200; position: relative;">
+                    <button id="lookup-btn"
+                        style="background: none; border: none; color: #888; cursor: pointer; font-family: 'Montserrat', sans-serif; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 5px;">
+                        <i class="bi bi-search"></i> URL 조회
+                    </button>
+                    <button id="qr-gen-btn"
+                        style="background: none; border: none; color: #888; cursor: pointer; font-family: 'Montserrat', sans-serif; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 5px;">
+                        <i class="bi bi-qr-code"></i> QR 생성
+                    </button>
+                    <a href="/utils"
+                        style="background: none; border: none; color: #888; cursor: pointer; font-family: 'Montserrat', sans-serif; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 5px; text-decoration: none;">
+                        <i class="bi bi-card-list"></i> 도구
+                    </a>
+                </div>
+            </div>
+
+            <div class="switch__container is-hidden" id="switch-c2">
+                <h2 class="switch__title title">VIALinks</h2>
+                <button class="switch__button button switch-btn" type="button">Short URL 생성</button>
+            </div>
+
+            <div class="modal-content" id="lookup-modal"
+                style="display: none; background-color: #ecf0f3; margin: 15% auto; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 10px 10px 10px #d1d9e6, -10px -10px 10px #f9f9f9; position: relative; z-index: 1001;">
+                <span class="close"
+                    style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+                <h2 class="title" style="margin-bottom: 20px; font-size: 1.5rem;">URL 조회</h2>
+
+                <div class="form-group">
+                    <input id="lookup-input" class="form__input" type="text"
+                        placeholder="https://vialinks.xyz/example | example" style="width: 100%; margin-bottom: 15px;">
+                </div>
+
+                <button id="do-lookup-btn" class="form__button button" type="button"
+                    style="width: 100%; margin-bottom: 20px;">
+                    <i class="bi bi-search"></i> 조회하기
+                </button>
+
+                <div id="lookup-result" style="display: none; margin-top: 20px; text-align: center;">
+                    <!-- Result content will be injected here -->
+                </div>
+            </div>
+
+            <div class="modal-content" id="qr-modal"
+                style="display: none; background-color: #ecf0f3; margin: 15% auto; padding: 30px; border-radius: 12px; width: 90%; max-width: 500px; box-shadow: 10px 10px 10px #d1d9e6, -10px -10px 10px #f9f9f9; position: relative; z-index: 1001;">
+                <span class="close-qr"
+                    style="color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+                <h2 class="title" style="margin-bottom: 20px; font-size: 1.5rem;">QR Code 생성</h2>
+
+                <div class="form-group">
+                    <input id="qr-input" class="form__input" type="text" placeholder="URL 또는 텍스트 입력"
+                        style="width: 100%; margin-bottom: 15px;">
+                </div>
+
+                <button id="do-qr-btn" class="form__button button" type="button"
+                    style="width: 100%; margin-bottom: 20px;">
+                    <i class="bi bi-qr-code"></i> 생성하기
+                </button>
+
+                <div id="qr-result" style="display: none; margin-top: 20px; text-align: center;">
+                    <div id="qr-canvas"
+                        style="display: inline-block; padding: 10px; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.1.3/axios.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/argon2-bundled.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        const ARGON2_PARAMS = Object.freeze({
+            time: 3,
+            mem: 262144,
+            parallelism: 1,
+            hashLen: 32,
+            saltLen: 16
+        });
+
+        const BASE64_URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+        let switchCtn = document.querySelector("#switch-cnt");
+        let switchC1 = document.querySelector("#switch-c1");
+        let switchC2 = document.querySelector("#switch-c2");
+        let switchCircle = document.querySelectorAll(".switch__circle");
+        let switchBtn = document.querySelectorAll(".switch-btn");
+        let aContainer = document.querySelector("#a-container");
+        let bContainer = document.querySelector("#b-container");
+        let allButtons = document.querySelectorAll(".submit");
+
+        let turnstileToken = null;
+        let turnstilePasteToken = null;
+        let getButtons = (e) => e.preventDefault();
+
+        window.onTurnstileSuccess = function (token) {
+            turnstileToken = token;
+            document.getElementById("gen").disabled = false;
+        }
+
+        window.onTurnstilePasteSuccess = function (token) {
+            turnstilePasteToken = token;
+            document.getElementById("paste_btn").disabled = false;
+        }
+
+        function bytesToBase64Url(bytes) {
+            let result = '';
+            for (let i = 0; i < bytes.length; i += 3) {
+                const a = bytes[i];
+                const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+                const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+                const triplet = (a << 16) | (b << 8) | c;
+
+                result += BASE64_URL_ALPHABET[(triplet >> 18) & 0x3f];
+                result += BASE64_URL_ALPHABET[(triplet >> 12) & 0x3f];
+                result += i + 1 < bytes.length ? BASE64_URL_ALPHABET[(triplet >> 6) & 0x3f] : '';
+                result += i + 2 < bytes.length ? BASE64_URL_ALPHABET[triplet & 0x3f] : '';
+            }
+            return result;
+        }
+
+        function evaluatePasswordStrength(password) {
+            if (!password) {
+                return { score: 0, label: '약함', width: 10, cls: 'strength-weak' };
+            }
+
+            let score = 0;
+            if (password.length >= 10) score += 20;
+            if (password.length >= 14) score += 20;
+            if (password.length >= 20) score += 10;
+
+            let groups = 0;
+            if (/[a-z]/.test(password)) groups += 1;
+            if (/[A-Z]/.test(password)) groups += 1;
+            if (/[0-9]/.test(password)) groups += 1;
+            if (/[^a-zA-Z0-9]/.test(password)) groups += 1;
+            score += groups * 10;
+
+            if (/(.)\1\1/.test(password)) score -= 15;
+            if (/0123|1234|2345|3456|4567|5678|6789|abcd|bcde|cdef|qwer|asdf/i.test(password)) score -= 15;
+
+            score = Math.max(0, Math.min(100, score));
+            if (score < 35) return { score, label: '약함', width: 25, cls: 'strength-weak' };
+            if (score < 55) return { score, label: '보통', width: 50, cls: 'strength-fair' };
+            if (score < 80) return { score, label: '강함', width: 75, cls: 'strength-strong' };
+            return { score, label: '매우 강함', width: 100, cls: 'strength-very-strong' };
+        }
+
+        function bindPasswordUi(prefix = '') {
+            const suffix = prefix ? `_${prefix}` : '';
+            const input = document.getElementById(`share_lock_code${suffix}`);
+            const label = document.getElementById(`password_strength_label${suffix}`);
+            const bar = document.getElementById(`password_strength_bar${suffix}`);
+            const generateBtn = document.getElementById(`generate_password_btn${suffix}`);
+            const copyBtn = document.getElementById(`copy_password_btn${suffix}`);
+            const copyStatus = document.getElementById(`password_copy_status${suffix}`);
+
+            const renderStrength = () => {
+                const result = evaluatePasswordStrength(input.value);
+                label.textContent = result.label;
+                bar.style.width = `${result.width}%`;
+                bar.className = `password-strength-fill ${result.cls}`;
+            };
+
+            const showCopyStatus = (text, isError = false) => {
+                copyStatus.textContent = text;
+                copyStatus.classList.toggle('is-error', isError);
+                setTimeout(() => {
+                    copyStatus.textContent = '';
+                    copyStatus.classList.remove('is-error');
+                }, 1400);
+            };
+
+            generateBtn.addEventListener('click', () => {
+                const random = window.crypto.getRandomValues(new Uint8Array(24));
+                const token = bytesToBase64Url(random);
+                input.value = `${token.slice(0, 8)}-${token.slice(8, 16)}-${token.slice(16, 24)}-${token.slice(24, 32)}`;
+                renderStrength();
+            });
+
+            copyBtn.addEventListener('click', async () => {
+                if (!input.value) {
+                    showCopyStatus('비밀번호가 비어 있습니다', true);
+                    return;
+                }
+                try {
+                    await navigator.clipboard.writeText(input.value);
+                    showCopyStatus('복사됨');
+                } catch (error) {
+                    showCopyStatus('복사 실패', true);
+                }
+            });
+
+            input.addEventListener('input', renderStrength);
+            renderStrength();
+        }
+
+        let changeForm = (e) => {
+            const lookupContainer = document.getElementById("lookup-container");
+            const formsTrack = document.getElementById("forms-track");
+
+            // Desktop transition logic
+            switchCtn.classList.add("is-gx");
+            setTimeout(() => switchCtn.classList.remove("is-gx"), 1500);
+
+            switchCtn.classList.toggle("is-txr");
+            switchCircle[0].classList.toggle("is-txr");
+            switchCircle[1].classList.toggle("is-txr");
+
+            switchC1.classList.toggle("is-hidden");
+            switchC2.classList.toggle("is-hidden");
+            aContainer.classList.toggle("is-txl");
+            bContainer.classList.toggle("is-txl");
+            bContainer.classList.toggle("is-z200");
+
+            // Mobile transition logic
+            formsTrack.classList.toggle("is-switched");
+
+            // Toggle lookup button visibility
+            if (switchC1.classList.contains("is-hidden")) {
+                lookupContainer.style.display = "none";
+            } else {
+                lookupContainer.style.display = "flex";
+            }
+        }
+
+        let mainF = (e) => {
+            for (let i = 0; i < allButtons.length; i++)
+                allButtons[i].addEventListener("click", getButtons);
+            for (let i = 0; i < switchBtn.length; i++)
+                switchBtn[i].addEventListener("click", changeForm);
+
+            document.getElementById('expires_checkbox').addEventListener('change', function () {
+                document.getElementById('expires_options').style.display = this.checked ? 'none' : 'block';
+            });
+            document.getElementById('paste_expires_checkbox').addEventListener('change', function () {
+                document.getElementById('paste_expires_options').style.display = this.checked ? 'none' : 'block';
+            });
+
+            // Password checkbox handlers
+            document.getElementById('password_checkbox').addEventListener('change', function () {
+                document.getElementById('password_options').style.display = this.checked ? 'block' : 'none';
+            });
+            document.getElementById('paste_password_checkbox').addEventListener('change', function () {
+                document.getElementById('paste_password_options').style.display = this.checked ? 'block' : 'none';
+            });
+
+            // Toggle password visibility handlers
+            document.getElementById('btn_toggle_share_key').addEventListener('click', function () {
+                const input = document.getElementById('share_lock_code');
+                const icon = this.querySelector('i');
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.classList.remove('bi-eye');
+                    icon.classList.add('bi-eye-slash');
+                } else {
+                    input.type = 'password';
+                    icon.classList.remove('bi-eye-slash');
+                    icon.classList.add('bi-eye');
+                }
+            });
+            document.getElementById('btn_toggle_share_key_paste').addEventListener('click', function () {
+                const input = document.getElementById('share_lock_code_paste');
+                const icon = this.querySelector('i');
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.classList.remove('bi-eye');
+                    icon.classList.add('bi-eye-slash');
+                } else {
+                    input.type = 'password';
+                    icon.classList.remove('bi-eye-slash');
+                    icon.classList.add('bi-eye');
+                }
+            });
+
+            bindPasswordUi();
+            bindPasswordUi('paste');
+
+            // Initialize custom selects
+            initCustomSelect('custom_expires_in');
+            initCustomSelect('custom_paste_expires_in');
+        }
+
+        function initCustomSelect(selectId) {
+            const select = document.getElementById(selectId);
+            const trigger = select.querySelector('.custom-select__trigger');
+            const options = select.querySelectorAll('.custom-select__option');
+            const hiddenSelect = select.previousElementSibling;
+
+            trigger.addEventListener('click', () => {
+                select.classList.toggle('open');
+            });
+
+            for (const option of options) {
+                option.addEventListener('click', function () {
+                    if (!this.classList.contains('selected')) {
+                        const selectedOption = select.querySelector('.custom-select__option.selected');
+                        if (selectedOption) {
+                            selectedOption.classList.remove('selected');
+                        }
+                        this.classList.add('selected');
+                        trigger.querySelector('span').textContent = this.textContent;
+                        hiddenSelect.value = this.getAttribute('data-value');
+                    }
+                    select.classList.remove('open');
+                });
+            }
+
+            window.addEventListener('click', (e) => {
+                if (!select.contains(e.target)) {
+                    select.classList.remove('open');
+                }
+            });
+        }
+
+        window.addEventListener("load", mainF);
+
+        // E2EE Encryption function
+        async function encryptData(data, password) {
+            const encoder = new TextEncoder();
+            const salt = window.crypto.getRandomValues(new Uint8Array(ARGON2_PARAMS.saltLen));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            const argonResult = await argon2.hash({
+                pass: password,
+                salt,
+                time: ARGON2_PARAMS.time,
+                mem: ARGON2_PARAMS.mem,
+                parallelism: ARGON2_PARAMS.parallelism,
+                hashLen: ARGON2_PARAMS.hashLen,
+                type: argon2.ArgonType.Argon2id,
+                distPath: 'https://cdn.jsdelivr.net/npm/argon2-browser@1.18.0/dist/'
+            });
+
+            const key = await window.crypto.subtle.importKey(
+                'raw',
+                argonResult.hash,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt']
+            );
+
+            const encrypted = await window.crypto.subtle.encrypt(
+                {
+                    name: "AES-GCM",
+                    iv: iv
+                },
+                key,
+                encoder.encode(data)
+            );
+
+            return {
+                v: 2,
+                kdf: 'argon2id',
+                kdf_params: {
+                    time: ARGON2_PARAMS.time,
+                    mem: ARGON2_PARAMS.mem,
+                    parallelism: ARGON2_PARAMS.parallelism,
+                    hashLen: ARGON2_PARAMS.hashLen
+                },
+                ciphertext: bytesToBase64Url(new Uint8Array(encrypted)),
+                iv: bytesToBase64Url(iv),
+                salt: bytesToBase64Url(salt)
+            };
+        }
+
+        const isValidUrl = (url) => {
+            try {
+                let testUrl = url.trim();
+                if (!testUrl.includes('://')) {
+                    testUrl = 'https://' + testUrl;
+                }
+                const parsed = new URL(testUrl);
+                return parsed.hostname.includes('.');
+            } catch (e) {
+                return false;
+            }
+        };
+
+        const copy = (text) => {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text);
+            } else {
+                const textArea = document.createElement('textarea');
+                document.body.appendChild(textArea);
+                textArea.value = text;
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+        }
+
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 5000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer);
+                toast.addEventListener('mouseleave', Swal.resumeTimer);
+            }
+        });
+
+        // Helper function to generate QR code
+        const generateQRCode = (elementId, text, size = 180) => {
+            const element = document.getElementById(elementId);
+            element.innerHTML = ""; // Clear previous
+            try {
+                new QRCode(element, {
+                    text: text,
+                    width: size,
+                    height: size,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+                return true;
+            } catch (e) {
+                console.error("QR Generation Error:", e);
+                return false;
+            }
+        };
+
+        document.getElementById("gen").addEventListener('click', async () => {
+            const key = document.getElementById("key").value;
+            const url = document.getElementById("url").value;
+            const expiresCheckbox = document.getElementById('expires_checkbox');
+            const passwordCheckbox = document.getElementById('password_checkbox');
+            let expiresIn;
+
+            if (expiresCheckbox.checked) {
+                expiresIn = '86400';
+            } else {
+                expiresIn = document.getElementById('expires_in').value;
+            }
+
+            // Get password if checkbox is checked
+            let password = null;
+            if (passwordCheckbox.checked) {
+                password = document.getElementById('share_lock_code').value;
+                if (!password) {
+                    Toast.fire({
+                        icon: 'warning',
+                        title: '비밀번호를 입력해주세요'
+                    });
+                    return;
+                }
+            }
+
+            if (!key || !url) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '모든 필드를 입력해주세요'
+                });
+                return;
+            }
+
+            if (!isValidUrl(url)) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '유효한 URL 형식이 아닙니다'
+                });
+                return;
+            }
+
+            if (!turnstileToken) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '보안 확인을 완료해주세요'
+                });
+                return;
+            }
+
+            try {
+                const requestData = { key, url, turnstile_token: turnstileToken, expires_in: expiresIn };
+                if (password) {
+                    const enc_data = await encryptData(url, password);
+                    requestData.is_encrypted = true;
+                    requestData.enc_data = enc_data;
+                    // Don't send original URL for encrypted links
+                    requestData.url = 'https://vialinks.xyz/encrypted-content';
+                }
+                const res = await axios.post('/api/v1/short/', requestData);
+                const data = res.data;
+
+                if (data?.status) {
+                    const gen_short = `${window.location.origin}/${data.key}`;
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Short URL',
+                        html: `
+                            <div style="margin-bottom: 15px;">
+                                <a href="${gen_short}" target="_blank" style="font-size: 1.2em; color: #4B70E2; text-decoration: none; font-weight: bold;">${gen_short}</a>
+                            </div>
+                            <div id="swal-qr-container" style="background: white; padding: 10px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1);"></div>
+                            <div style="margin-top: 20px;">
+                                <button onclick="downloadQR('swal-qr-container', '${data.key}')" class="btn" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border: none; background: #ecf0f3; padding: 10px 20px; border-radius: 20px; cursor: pointer; color: #4B70E2; font-weight: bold;">
+                                    <i class="bi bi-download"></i> QR Code 저장
+                                </button>
+                            </div>
+                        `,
+                        confirmButtonColor: '#4B70E2',
+                        confirmButtonText: '복사 후 창 닫기',
+                        footer: 'VIALinks',
+                        didOpen: () => {
+                            generateQRCode('swal-qr-container', gen_short);
+                        }
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            copy(gen_short);
+                            Toast.fire({
+                                icon: 'info',
+                                title: "Short URL이 클립보드에 복사되었습니다"
+                            });
+                        }
+                    });
+                } else {
+                    Toast.fire({
+                        icon: 'error',
+                        title: data.reason ?? "Short URL 생성을 실패했습니다"
+                    });
+                }
+            } catch (error) {
+                let reason = "네트워크 오류가 발생했습니다";
+                if (error.response && error.response.data && error.response.data.reason) {
+                    reason = error.response.data.reason;
+                }
+                Toast.fire({
+                    icon: 'error',
+                    title: reason
+                });
+            } finally {
+                turnstileToken = null;
+                document.getElementById("gen").disabled = true;
+                if (window.turnstile) turnstile.reset();
+            }
+        });
+
+        document.getElementById("paste_btn").addEventListener('click', async () => {
+            const key = document.getElementById("paste_key").value;
+            const content = document.getElementById("paste_content").value;
+            const expiresCheckbox = document.getElementById('paste_expires_checkbox');
+            const passwordCheckbox = document.getElementById('paste_password_checkbox');
+            let expiresIn;
+
+            if (expiresCheckbox.checked) {
+                expiresIn = '86400';
+            } else {
+                expiresIn = document.getElementById('paste_expires_in').value;
+            }
+
+            // Get password if checkbox is checked
+            let password = null;
+            if (passwordCheckbox.checked) {
+                password = document.getElementById('share_lock_code_paste').value;
+                if (!password) {
+                    Toast.fire({
+                        icon: 'warning',
+                        title: '비밀번호를 입력해주세요'
+                    });
+                    return;
+                }
+            }
+
+            if (!content) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '내용을 입력해주세요'
+                });
+                return;
+            }
+
+            if (!turnstilePasteToken) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '보안 확인을 완료해주세요'
+                });
+                return;
+            }
+
+            try {
+                const requestData = { key, content, turnstile_token: turnstilePasteToken, expires_in: expiresIn };
+                if (password) {
+                    const enc_data = await encryptData(content, password);
+                    requestData.is_encrypted = true;
+                    requestData.enc_data = enc_data;
+                    // Don't send original content for encrypted links
+                    requestData.content = 'Encrypted Content';
+                }
+                const res = await axios.post('/api/v1/paste/', requestData);
+                const data = res.data;
+
+                if (data?.status) {
+                    const gen_short = `${window.location.origin}/${data.key}`;
+
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Paste Created',
+                        html: `
+                            <div style="margin-bottom: 15px;">
+                                <a href="${gen_short}" target="_blank" style="font-size: 1.2em; color: #4B70E2; text-decoration: none; font-weight: bold;">${gen_short}</a>
+                            </div>
+                            <div id="swal-paste-qr-container" style="background: white; padding: 10px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1);"></div>
+                            <div style="margin-top: 20px;">
+                                <button onclick="downloadQR('swal-paste-qr-container', '${data.key}')" class="btn" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border: none; background: #ecf0f3; padding: 10px 20px; border-radius: 20px; cursor: pointer; color: #4B70E2; font-weight: bold;">
+                                    <i class="bi bi-download"></i> QR Code 저장
+                                </button>
+                            </div>
+                        `,
+                        confirmButtonColor: '#4B70E2',
+                        confirmButtonText: '복사 후 창 닫기',
+                        footer: 'VIALinks',
+                        didOpen: () => {
+                            generateQRCode('swal-paste-qr-container', gen_short);
+                        }
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            copy(gen_short);
+                            Toast.fire({
+                                icon: 'info',
+                                title: "링크가 클립보드에 복사되었습니다"
+                            });
+                        }
+                    });
+                } else {
+                    Toast.fire({
+                        icon: 'error',
+                        title: data.reason ?? "Paste 생성을 실패했습니다"
+                    });
+                }
+            } catch (error) {
+                let reason = "네트워크 오류가 발생했습니다";
+                if (error.response && error.response.data && error.response.data.reason) {
+                    reason = error.response.data.reason;
+                }
+                Toast.fire({
+                    icon: 'error',
+                    title: reason
+                });
+            } finally {
+                turnstilePasteToken = null;
+                document.getElementById("paste_btn").disabled = true;
+                if (window.turnstile) turnstile.reset('#turnstile-paste');
+            }
+        });
+
+        // Global download function
+        window.downloadQR = (containerId, filename) => {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            // qrcode.js generates both canvas and img. img is usually easier to download.
+            let img = container.querySelector('img');
+            let dataUrl;
+
+            if (img && img.src && img.src.startsWith('data:image')) {
+                dataUrl = img.src;
+            } else {
+                // Fallback to canvas
+                const canvas = container.querySelector('canvas');
+                if (canvas) {
+                    dataUrl = canvas.toDataURL('image/png');
+                }
+            }
+
+            if (dataUrl) {
+                const link = document.createElement('a');
+                link.download = `qr-${filename}.png`;
+                link.href = dataUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                Toast.fire({
+                    icon: 'error',
+                    title: 'QR 이미지를 찾을 수 없습니다'
+                });
+            }
+        };
+
+        // Lookup Modal Logic
+        const lookupBtn = document.getElementById("lookup-btn");
+        const lookupModal = document.getElementById("lookup-modal");
+        const closeBtn = document.getElementsByClassName("close")[0];
+        const doLookupBtn = document.getElementById("do-lookup-btn");
+        const lookupInput = document.getElementById("lookup-input");
+        const lookupResult = document.getElementById("lookup-result");
+
+        lookupBtn.onclick = function () {
+            lookupModal.style.display = "block";
+            lookupInput.focus();
+        }
+
+        closeBtn.onclick = function () {
+            lookupModal.style.display = "none";
+            lookupResult.style.display = "none";
+            lookupInput.value = "";
+        }
+
+        // QR Generator Modal Logic
+        const qrGenBtn = document.getElementById("qr-gen-btn");
+        const qrModal = document.getElementById("qr-modal");
+        const closeQrBtn = document.getElementsByClassName("close-qr")[0];
+        const doQrBtn = document.getElementById("do-qr-btn");
+        const qrInput = document.getElementById("qr-input");
+        const qrResult = document.getElementById("qr-result");
+
+        qrGenBtn.onclick = function () {
+            qrModal.style.display = "block";
+            qrInput.focus();
+        }
+
+        closeQrBtn.onclick = function () {
+            qrModal.style.display = "none";
+            qrResult.style.display = "none";
+            qrInput.value = "";
+        }
+
+        window.onclick = function (event) {
+            if (event.target == lookupModal) {
+                lookupModal.style.display = "none";
+                lookupResult.style.display = "none";
+                lookupInput.value = "";
+            }
+            if (event.target == qrModal) {
+                qrModal.style.display = "none";
+                qrResult.style.display = "none";
+                qrInput.value = "";
+            }
+        }
+
+        doQrBtn.onclick = function () {
+            const content = qrInput.value.trim();
+            if (!content) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '내용을 입력해주세요'
+                });
+                return;
+            }
+
+            // Length check
+            if (content.length > 1000) {
+                Toast.fire({
+                    icon: 'error',
+                    title: '데이터가 너무 깁니다 (최대 1000자)'
+                });
+                return;
+            }
+
+            qrResult.style.display = 'block';
+            const success = generateQRCode('qr-canvas', content, 200);
+
+            if (!success) {
+                qrResult.innerHTML = '<p style="color: red;">QR 코드 생성 실패</p>';
+            } else {
+                // Add download button if not exists
+                if (!document.getElementById('qr-download-btn')) {
+                    const btn = document.createElement('div');
+                    btn.id = 'qr-download-btn';
+                    btn.style.marginTop = '15px';
+                    btn.innerHTML = `
+                        <button onclick="downloadQR('qr-canvas', 'custom')" class="btn" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; border: none; background: #ecf0f3; padding: 10px 20px; border-radius: 20px; cursor: pointer; color: #4B70E2; font-weight: bold;">
+                            <i class="bi bi-download"></i> 저장하기
+                        </button>
+                    `;
+                    qrResult.appendChild(btn);
+                }
+            }
+        }
+
+        doLookupBtn.onclick = async function () {
+            const query = lookupInput.value.trim();
+            if (!query) {
+                Toast.fire({
+                    icon: 'warning',
+                    title: '조회할 URL 또는 키를 입력해주세요'
+                });
+                return;
+            }
+
+            doLookupBtn.disabled = true;
+            doLookupBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> 조회중...';
+
+            try {
+                const res = await axios.post('/api/v1/lookup', { query });
+                const data = res.data;
+
+                if (data.status) {
+                    let html = '';
+                    const shortUrl = `${window.location.origin}/${data.key}`;
+
+                    // 암호화된 링크
+                    if (data.is_encrypted) {
+                        html = `
+                            <div style="margin-bottom: 20px;">
+                                <i class="bi bi-lock-fill" style="font-size: 3rem; color: #e24b4b;"></i>
+                                <p style="font-size: 1.2em; font-weight: bold; margin-top: 10px;">암호화된 링크입니다</p>
+                            </div>
+                            <a href="/${data.key}" target="_blank" class="form__button button" style="text-decoration: none; display: inline-block; line-height: 50px;">
+                                <i class="bi bi-box-arrow-up-right"></i> 바로가기
+                            </a>
+                        `;
+                    } else if (data.type === 'url') {
+                        html = `
+                            <div style="margin-bottom: 15px;">
+                                <p style="color: #666; margin-bottom: 5px;">리디렉션 목적지:</p>
+                                <a href="${data.url}" target="_blank" style="font-size: 1.1em; color: #4B70E2; text-decoration: none; word-break: break-all;">${data.url}</a>
+                            </div>
+
+                        `;
+                    } else if (data.type === 'paste') {
+                        html = `
+                            <div style="margin-bottom: 20px;">
+                                <i class="bi bi-file-text" style="font-size: 3rem; color: #4B70E2;"></i>
+                                <p style="font-size: 1.2em; font-weight: bold; margin-top: 10px;">텍스트 공유입니다</p>
+                            </div>
+                            <a href="/${data.key}" target="_blank" class="form__button button" style="text-decoration: none; display: inline-block; line-height: 50px;">
+                                <i class="bi bi-file-text"></i> 내용 확인하기
+                            </a>
+                        `;
+                    } else if (data.type === 'page') {
+                        html = `
+                            <div style="margin-bottom: 20px;">
+                                <i class="bi bi-code-slash" style="font-size: 3rem; color: #888;"></i>
+                                <p style="font-size: 1.2em; font-weight: bold; margin-top: 10px;">이 페이지는 미리볼 수 없습니다</p>
+                            </div>
+                            <a href="/${data.key}" target="_blank" class="form__button button" style="text-decoration: none; display: inline-block; line-height: 50px;">
+                                <i class="bi bi-box-arrow-up-right"></i> 바로가기
+                            </a>
+                        `;
+                    } else if (data.type === 'image') {
+                        html = `
+                            <div style="margin-bottom: 15px;">
+                                <img src="/${data.key}" alt="이미지 미리보기" style="max-width: 100%; max-height: 300px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                            </div>
+                            <a href="/${data.key}" target="_blank" class="form__button button" style="text-decoration: none; display: inline-block; line-height: 50px;">
+                                <i class="bi bi-box-arrow-up-right"></i> 바로가기
+                            </a>
+                        `;
+                    }
+
+                    lookupResult.innerHTML = html;
+                    lookupResult.style.display = 'block';
+
+
+                }
+            } catch (error) {
+                let reason = "존재하지 않거나 만료된 URL입니다";
+                if (error.response && error.response.data && error.response.data.reason) {
+                    reason = error.response.data.reason;
+                }
+
+                lookupResult.innerHTML = `
+                    <div style="color: #e24b4b; padding: 20px;">
+                        <i class="bi bi-exclamation-circle" style="font-size: 2rem; margin-bottom: 10px; display: block;"></i>
+                        ${reason}
+                    </div>
+                `;
+                lookupResult.style.display = 'block';
+            } finally {
+                doLookupBtn.disabled = false;
+                doLookupBtn.innerHTML = '<i class="bi bi-search"></i> 조회하기';
+            }
+        }
+    </script>
+</body>
+
+
+</html>

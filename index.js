@@ -1,136 +1,193 @@
-// Cloudflare Workers backend for VIA Link Shortener
-import htmlContent from './index.html';
-import cssContent from './index.css';
-import adminLoginHtml from './admin-login.html';
-import adminDashboardHtml from './admin-dashboard.html';
-import pasteHtml from './paste.html';
-import errorHtml from './error.html';
-import error404Css from './404.css';
-import error404Js from './404.js';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import QRCode from 'qrcode';
 
-export default {
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(handleScheduled(env));
-  },
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
+const app = new Hono();
 
-    // CORS headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
-
-    // Handle CORS preflight
-    if (method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-    try {
-      // API Routes
-      if (path.startsWith('/api/v1/short/') && method === 'POST') {
-        return await handleCreateShortUrl(request, env, corsHeaders);
-      }
-
-      if (path.startsWith('/api/v1/paste/') && method === 'POST') {
-        return await handleCreatePaste(request, env, corsHeaders);
-      }
-
-      if (path.startsWith('/api/v1/qr/') && method === 'GET') {
-        const key = path.substring('/api/v1/qr/'.length);
-        return await handleQrCode(key, env, request);
-      }
-
-
-      if (path.startsWith('/api/v1/lookup') && method === 'POST') {
-        return await handleLookup(request, env, corsHeaders);
-      }
-
-      // Admin Routes
-      if (path.startsWith('/admin') || path.startsWith('/api/v1/admin/')) {
-        return await handleAdmin(request, env);
-      }
-
-      // Serve favicon
-      if (path === '/favicon.jpg' && method === 'GET') {
-        return await serveFavicon(env);
-      }
-
-      // Serve CSS
-      if (path === '/index.css' && method === 'GET') {
-        return new Response(cssContent, {
-          headers: {
-            'Content-Type': 'text/css; charset=utf-8',
-            'Cache-Control': 'public, max-age=86400'
-          }
-        });
-      }
-
-      // Serve 404 CSS
-      if (path === '/404.css' && method === 'GET') {
-        return new Response(error404Css, {
-          headers: {
-            'Content-Type': 'text/css; charset=utf-8',
-            'Cache-Control': 'public, max-age=86400'
-          }
-        });
-      }
-
-      // Serve 404 JS
-      if (path === '/404.js' && method === 'GET') {
-        return new Response(error404Js, {
-          headers: {
-            'Content-Type': 'application/javascript; charset=utf-8',
-            'Cache-Control': 'public, max-age=86400'
-          }
-        });
-      }
-
-      // Short URL redirection
-      if (path.length > 1 && path !== '/index.html' && path !== '/index.css' && path !== '/404.css' && path !== '/404.js' && path !== '/favicon.jpg') {
-        const key = path.substring(1); // Remove leading slash
-        return await handleRedirect(key, env);
-      }
-
-      // Serve main page
-      if (path === '/' || path === '/index.html') {
-        return await serveMainPage(env);
-      }
-
-      // 404 for other routes
-      return serveErrorPage('페이지를 찾을 수 없습니다');
-    } catch (error) {
-      console.error('Error:', error);
-      return new Response('Internal Server Error', { status: 500 });
-    }
-  }
-};
-
-// Reserved keywords that cannot be used as keys
+// Reserved keywords that cannot be used as keys to prevent conflicts with system routes
 const RESERVED_KEYWORDS = [
-  'api', 'assets', 'favicon.jpg', 'index.html', 'index.css', '404.css', '404.js', 'robots.txt', 'sitemap.xml'
+  'api', 'admin', 'admin-post', 'utils', 'static', 'assets', 'public', 'dashboard', 'login', 'logout',
+  'favicon.jpg', 'index.html', 'index.css', '404.css', '404.js', 'robots.txt', 'sitemap.xml', 'ads.txt',
+  'utils.html', 'health', 'status', 'home'
 ];
 
+// CORS Middleware
+app.use('*', cors({
+  origin: '*',
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// API Routes
+app.post('/api/v1/short/', async (c) => {
+  return await handleCreateShortUrl(c);
+});
+
+app.post('/api/v1/paste/', async (c) => {
+  return await handleCreatePaste(c);
+});
+
+app.get('/api/v1/qr/:key', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleQrCode(c, key);
+});
+
+app.post('/api/v1/lookup', async (c) => {
+  return await handleLookup(c);
+});
+
+// Admin Routes
+app.get('/admin', async (c) => {
+  return await handleAdminPage(c);
+});
+
+app.post('/api/v1/admin/login', async (c) => {
+  return await handleAdminLogin(c);
+});
+
+app.post('/api/v1/admin/logout', async (c) => {
+  return await handleAdminLogout(c);
+});
+
+app.post('/api/v1/admin/link/:key/expire', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleAdminExpireLink(c, key);
+});
+
+app.delete('/api/v1/admin/link/:key', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleAdminDeleteLink(c, key);
+});
+
+app.delete('/api/v1/admin/expired-link/:id', async (c) => {
+  const id = c.req.param('id');
+  return await handleAdminDeleteExpiredLink(c, id);
+});
+
+app.post('/api/v1/admin/page', async (c) => {
+  return await handleAdminCreatePage(c);
+});
+
+app.post('/api/v1/admin/image', async (c) => {
+  return await handleAdminCreateImage(c);
+});
+
+app.get('/admin/post', async (c) => {
+  return await handleAdminPostPage(c);
+});
+
+app.put('/api/v1/admin/link/:key', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleAdminUpdateLink(c, key);
+});
+
+app.post('/api/v1/admin/link/:key/extend', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleAdminExtendLink(c, key);
+});
+
+app.post('/api/v1/admin/page/:key/deactivate', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleAdminExpireLink(c, key);
+});
+
+app.post('/api/v1/admin/page/:id/activate', async (c) => {
+  const id = c.req.param('id');
+  return await handleAdminActivatePage(c, id);
+});
+
+app.get('/api/v1/admin/link/:key/raw', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+  return await handleAdminRawContent(c, key);
+});
+
+app.get('/api/v1/admin/expired-link/:id/raw', async (c) => {
+  const id = c.req.param('id');
+  return await handleAdminRawExpiredContent(c, id);
+});
+
+app.get('/api/v1/admin/dashboard-data', async (c) => {
+  return await handleAdminDashboardData(c);
+});
+
+// Main Pages
+app.get('/', async (c) => {
+  return await serveMainPage(c);
+});
+
+app.get('/index.html', async (c) => {
+  return await serveMainPage(c);
+});
+
+// Redirect /utils to /utils.html (which is served by Assets)
+app.get('/utils', (c) => {
+  return c.redirect('/utils.html');
+});
+
+// Short URL redirection (Catch-all for paths longer than 1 character)
+app.get('/:key', async (c) => {
+  const key = decodeURIComponent(c.req.param('key'));
+
+  // Basic check for static-like paths if not caught by Assets
+  if (RESERVED_KEYWORDS.includes(key.toLowerCase()) || key.includes('.')) {
+    return c.notFound();
+  }
+
+  return await handleRedirect(c, key);
+});
+
+// Fallback for Assets and 404
+app.notFound(async (c) => {
+  const url = new URL(c.req.url);
+  const path = url.pathname;
+
+  // Try to serve from Assets if it looks like a static file or is a reserved keyword
+  if (path.includes('.') || RESERVED_KEYWORDS.includes(path.slice(1).toLowerCase())) {
+    if (c.env.ASSETS) {
+      return await c.env.ASSETS.fetch(c.req.raw);
+    }
+  }
+
+  return await serveErrorPage(c, '페이지를 찾을 수 없습니다');
+});
+
+// --- Helper Functions ---
+
+// Fetch asset content from Cloudflare Workers Assets
+async function getAsset(c, path) {
+  const env = c.env;
+  if (!env.ASSETS) {
+    throw new Error('ASSETS binding not found');
+  }
+  const url = new URL(path, c.req.url);
+  const response = await env.ASSETS.fetch(new Request(url.toString()));
+  if (!response.ok) {
+    throw new Error(`Failed to fetch asset ${path}: ${response.statusText}`);
+  }
+  return await response.text();
+}
+
 // Serve the main HTML page with template variables replaced
-async function serveMainPage(env) {
-  // Get domain from environment variables or use a default
-  const domain = env.DOMAIN || 'vialinks.example.com';
+async function serveMainPage(c) {
+  const env = c.env;
+  const domain = env.DOMAIN || 'vialinks.xyz';
   const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '0x4AAAAAAA-example-site-key';
 
-  // Replace template variables
-  // Note: {{MAIN_CSS}} is no longer in index.html as it links to /index.css directly,
-  // but we keep the replacement logic just in case or for backward compatibility if index.html is reverted.
+  let htmlContent = '';
+  try {
+    htmlContent = await getAsset(c, '/assets/templates/index.html');
+  } catch (e) {
+    console.error('Failed to load index.html from assets:', e);
+    return c.text('Critical Error: Failed to load main page assets.', 500);
+  }
+
   let processedHtml = htmlContent
-    .replace(/\{\{MAIN_CSS\}\}/g, cssContent)
     .replace(/\{\{DOMAIN\}\}/g, domain)
     .replace(/\{\{TURNSTILE_SITE_KEY\}\}/g, turnstileSiteKey);
 
-  return new Response(processedHtml, {
+  return c.html(processedHtml, {
     headers: {
-      'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=300',
       'Set-Cookie': 'dummy=dummy; path=/;'
     }
@@ -140,265 +197,175 @@ async function serveMainPage(env) {
 // Normalize URL by adding https:// if no protocol is present
 function normalizeUrl(url) {
   if (!url) return url;
-
-  // Trim whitespace
   url = url.trim();
-
-  // If URL already has a protocol (any protocol), return as-is
-  if (url.includes('://')) {
-    return url;
-  }
-
-  // Add https:// prefix if no protocol is present
+  if (url.includes('://')) return url;
   return 'https://' + url;
 }
 
 // Handle creating short URLs
-async function handleCreateShortUrl(request, env, corsHeaders) {
+async function handleCreateShortUrl(c) {
+  const env = c.env;
   try {
-    const body = await request.json();
-    let { key, url, turnstile_token, expires_in } = body;
+    const body = await c.req.json();
+    let { key, url, turnstile_token, expires_in, is_encrypted, enc_data } = body;
 
-    // Validate input
     if (!key || !url) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '키와 URL이 필요합니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
+      return c.json({ status: false, reason: '키와 URL이 필요합니다' }, 400);
     }
 
-    // Normalize URL by adding https:// if no protocol is present
     url = normalizeUrl(url);
 
-    // Validate URL format
     try {
       new URL(url);
     } catch {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '유효하지 않은 URL 형식입니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
+      return c.json({ status: false, reason: '유효하지 않은 URL 형식입니다' }, 400);
     }
 
-    // Validate key format (alphanumeric and hyphens only)
-    if (!/^[a-zA-Z0-9\-_]+$/.test(key)) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '키는 영문, 숫자, 하이픈, 언더스코어만 사용 가능합니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
+    if (!/^[a-zA-Z0-9\-_ㄱ-ㅎ가-힣]+$/.test(key)) {
+      return c.json({ status: false, reason: '키는 한글, 영문, 숫자, 하이픈, 언더스코어만 사용 가능합니다' }, 400);
     }
 
-    // Check for reserved keywords
     if (RESERVED_KEYWORDS.includes(key.toLowerCase())) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '사용할 수 없는 키입니다 (예약어)'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
+      return c.json({ status: false, reason: '사용할 수 없는 키입니다 (예약어)' }, 400);
     }
 
-    // Verify Turnstile token
     if (env.TURNSTILE_SECRET_KEY && turnstile_token) {
       const turnstileResponse = await verifyTurnstile(turnstile_token, env.TURNSTILE_SECRET_KEY);
       if (!turnstileResponse.success) {
-        return new Response(JSON.stringify({
-          status: false,
-          reason: '보안 확인에 실패했습니다'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        return c.json({ status: false, reason: '보안 확인에 실패했습니다' }, 400);
       }
     }
 
-    // Check if key already exists
     const existing = await env.vialinks.get(key);
     if (existing) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '이미 사용중인 키입니다'
-      }), {
-        status: 409,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
+      return c.json({ status: false, reason: '이미 사용중인 키입니다' }, 409);
     }
 
-    // Store the URL
+    const uid = crypto.randomUUID();
     const linkData = {
+      uid: uid,
       type: 'url',
       url: url,
-      created_at: new Date().toISOString(),
-      clicks: 0
+      created_at: new Date().toISOString()
     };
+
+    // Enforce max 7 days for public creation
+    const maxExpiresIn = 604800; // 7 days
+    let effectiveExpiresIn = maxExpiresIn;
 
     if (expires_in && expires_in !== 'permanent') {
       const expiresInSeconds = parseInt(expires_in, 10);
       if (!isNaN(expiresInSeconds)) {
-        const expirationDate = new Date(Date.now() + expiresInSeconds * 1000);
-        linkData.expires_at = expirationDate.toISOString();
+        effectiveExpiresIn = Math.min(expiresInSeconds, maxExpiresIn);
       }
+    }
+    const expirationDate = new Date(Date.now() + effectiveExpiresIn * 1000);
+    linkData.expires_at = expirationDate.toISOString();
+
+    if (is_encrypted && enc_data) {
+      linkData.is_encrypted = true;
+      linkData.enc_data = enc_data;
     }
 
     await env.vialinks.put(key, JSON.stringify(linkData));
-
-    return new Response(JSON.stringify({
-      status: true,
-      key: key
-    }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    return c.json({ status: true, key: key });
 
   } catch (error) {
     console.error('Error creating short URL:', error);
-    return new Response(JSON.stringify({
-      status: false,
-      reason: '서버 오류가 발생했습니다'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    return c.json({ status: false, reason: '서버 오류가 발생했습니다' }, 500);
   }
 }
 
 // Handle creating pastes
-async function handleCreatePaste(request, env, corsHeaders) {
+async function handleCreatePaste(c) {
+  const env = c.env;
   try {
-    const body = await request.json();
-    let { key, content, turnstile_token, expires_in } = body;
+    const body = await c.req.json();
+    let { key, content, turnstile_token, expires_in, is_encrypted, enc_data } = body;
 
-    // Validate input
     if (!content) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '내용이 필요합니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
+      return c.json({ status: false, reason: '내용이 필요합니다' }, 400);
     }
 
-    // Verify Turnstile token
     if (env.TURNSTILE_SECRET_KEY && turnstile_token) {
       const turnstileResponse = await verifyTurnstile(turnstile_token, env.TURNSTILE_SECRET_KEY);
       if (!turnstileResponse.success) {
-        return new Response(JSON.stringify({
-          status: false,
-          reason: '보안 확인에 실패했습니다'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        return c.json({ status: false, reason: '보안 확인에 실패했습니다' }, 400);
       }
     }
 
-    // Generate or Validate Key
     if (key) {
-      if (!/^[a-zA-Z0-9\-_]+$/.test(key)) {
-        return new Response(JSON.stringify({
-          status: false,
-          reason: '키는 영문, 숫자, 하이픈, 언더스코어만 사용 가능합니다'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+      if (!/^[a-zA-Z0-9\-_ㄱ-ㅎ가-힣]+$/.test(key)) {
+        return c.json({ status: false, reason: '키는 한글, 영문, 숫자, 하이픈, 언더스코어만 사용 가능합니다' }, 400);
       }
-
-      // Check for reserved keywords
       if (RESERVED_KEYWORDS.includes(key.toLowerCase())) {
-        return new Response(JSON.stringify({
-          status: false,
-          reason: '사용할 수 없는 키입니다 (예약어)'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        return c.json({ status: false, reason: '사용할 수 없는 키입니다 (예약어)' }, 400);
       }
-
-      // Check if key already exists
       const existing = await env.vialinks.get(key);
       if (existing) {
-        return new Response(JSON.stringify({
-          status: false,
-          reason: '이미 사용중인 키입니다'
-        }), {
-          status: 409,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        return c.json({ status: false, reason: '이미 사용중인 키입니다' }, 409);
       }
     } else {
-      // Generate random key
       do {
         key = Math.random().toString(36).substring(2, 8);
       } while (await env.vialinks.get(key) || RESERVED_KEYWORDS.includes(key.toLowerCase()));
     }
 
-    // Store the Paste data
+    const uid = crypto.randomUUID();
     const pasteData = {
+      uid: uid,
       type: 'paste',
       content: content,
-      created_at: new Date().toISOString(),
-      clicks: 0 // View count
+      created_at: new Date().toISOString()
     };
+
+    // Enforce max 7 days for public creation
+    const maxExpiresIn = 604800; // 7 days
+    let effectiveExpiresIn = maxExpiresIn;
 
     if (expires_in && expires_in !== 'permanent') {
       const expiresInSeconds = parseInt(expires_in, 10);
       if (!isNaN(expiresInSeconds)) {
-        const expirationDate = new Date(Date.now() + expiresInSeconds * 1000);
-        pasteData.expires_at = expirationDate.toISOString();
+        effectiveExpiresIn = Math.min(expiresInSeconds, maxExpiresIn);
       }
+    }
+    const expirationDate = new Date(Date.now() + effectiveExpiresIn * 1000);
+    pasteData.expires_at = expirationDate.toISOString();
+
+    if (is_encrypted && enc_data) {
+      pasteData.is_encrypted = true;
+      pasteData.enc_data = enc_data;
     }
 
     await env.vialinks.put(key, JSON.stringify(pasteData));
-
-    return new Response(JSON.stringify({
-      status: true,
-      key: key
-    }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    return c.json({ status: true, key: key });
 
   } catch (error) {
     console.error('Error creating paste:', error);
-    return new Response(JSON.stringify({
-      status: false,
-      reason: '서버 오류가 발생했습니다'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    return c.json({ status: false, reason: '서버 오류가 발생했습니다' }, 500);
   }
 }
 
 // Handle QR Code Generation
-async function handleQrCode(key, env, request) {
+async function handleQrCode(c, key) {
+  const env = c.env;
   try {
     const linkDataString = await env.vialinks.get(key);
     if (!linkDataString) {
-      return new Response('존재하지 않는 링크입니다', { status: 404 });
+      return c.text('존재하지 않는 링크입니다', 404);
     }
 
-    const url = new URL(request.url);
+    const url = new URL(c.req.url);
     const targetUrl = `${url.origin}/${key}`;
-    const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(targetUrl)}`;
 
-    const qrResponse = await fetch(qrApiUrl);
+    const qrBuffer = await QRCode.toBuffer(targetUrl, {
+      type: 'png',
+      margin: 1,
+      width: 200,
+      errorCorrectionLevel: 'H'
+    });
 
-    if (!qrResponse.ok) {
-      return new Response('QR 코드 생성 실패', { status: 500 });
-    }
-
-    return new Response(qrResponse.body, {
+    return new Response(qrBuffer, {
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'public, max-age=3600'
@@ -407,64 +374,107 @@ async function handleQrCode(key, env, request) {
 
   } catch (error) {
     console.error('Error handling QR Code:', error);
-    return new Response('Internal Server Error', { status: 500 });
-  }
-}
-
-// Serve favicon
-async function serveFavicon(env) {
-  try {
-    // Try to serve from R2 if available
-    if (env.R2) {
-      const faviconObject = await env.R2.get('favicon.jpg');
-      if (faviconObject) {
-        return new Response(await faviconObject.arrayBuffer(), {
-          headers: {
-            'Content-Type': 'image/jpeg',
-            'Cache-Control': 'public, max-age=31536000'
-          }
-        });
-      }
-    }
-
-    // Fallback: redirect to external favicon
-    return Response.redirect('https://sekaich.at/images/etc/viafavicon.jpg', 302);
-  } catch (error) {
-    console.error('Error serving favicon:', error);
-    // Fallback: redirect to external favicon
-    return Response.redirect('https://sekaich.at/images/etc/viafavicon.jpg', 302);
+    return c.text('Internal Server Error', 500);
   }
 }
 
 // Handle URL redirection
-async function handleRedirect(key, env) {
+async function handleRedirect(c, key) {
+  const env = c.env;
   try {
     const linkDataString = await env.vialinks.get(key);
 
     if (!linkDataString) {
-      if (!linkDataString) {
-        return serveErrorPage('존재하지 않는 단축 URL입니다');
-      }
+      return await serveErrorPage(c, '존재하지 않는 단축 URL입니다');
     }
 
     const linkData = JSON.parse(linkDataString);
 
-    // Increment click/view counter
-    linkData.clicks = (linkData.clicks || 0) + 1;
-    await env.vialinks.put(key, JSON.stringify(linkData));
-
-    // Check for Pastebin type
-    if (linkData.type === 'paste') {
-      return servePastePage(linkData.content, key);
+    if (linkData.expires_at && new Date(linkData.expires_at) < new Date()) {
+      return await serveErrorPage(c, '만료된 링크입니다');
     }
 
-    // Redirect to the original URL (Short URL)
-    return Response.redirect(linkData.url, 302);
+    if (env.STATS) {
+      env.STATS.writeDataPoint({
+        blobs: [key, linkData.uid || 'legacy'],
+        doubles: [1],
+        indexes: [linkData.uid || 'legacy'],
+      });
+    }
+
+    if (linkData.is_encrypted) {
+      return await servePasswordPage(c, key, linkData.type, linkData.enc_data);
+    }
+
+    if (linkData.type === 'paste') {
+      return await servePastePage(c, linkData.content, key);
+    }
+
+    if (linkData.type === 'page') {
+      const r2Key = linkData.r2_key || `pages/${linkData.uid || key}.html`;
+      const object = await env.R2.get(r2Key);
+      if (!object) {
+        return await serveErrorPage(c, '페이지 콘텐츠를 찾을 수 없습니다');
+      }
+      return new Response(await object.text(), {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=60'
+        }
+      });
+    }
+
+    if (linkData.type === 'image') {
+      const object = await env.R2.get(linkData.r2_key);
+      if (!object) {
+        return await serveErrorPage(c, '이미지를 찾을 수 없습니다');
+      }
+      return new Response(object.body, {
+        headers: {
+          'Content-Type': linkData.content_type || 'image/png',
+          'Cache-Control': 'public, max-age=3600'
+        }
+      });
+    }
+
+    const userAgent = c.req.header('User-Agent') || '';
+    if (isCrawler(userAgent)) {
+      const targetUrl = linkData.url;
+      let displayDomain = 'VIALinks';
+      try {
+        displayDomain = new URL(targetUrl).hostname;
+      } catch (e) { }
+
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>VIALinks</title>
+  <meta property="og:title" content="${displayDomain}">
+  <meta property="og:description" content="${targetUrl}">
+  <meta property="og:image" content="https://sekaich.at/images/etc/viapreview.png">
+  <meta name="theme-color" content="#87CEEB">
+  <meta http-equiv="refresh" content="0;url=${targetUrl}">
+</head>
+<body>
+  <p>Redirecting to <a href="${targetUrl}">${targetUrl}</a>...</p>
+</body>
+</html>`;
+      return c.html(html);
+    }
+
+    return c.redirect(linkData.url, 302);
 
   } catch (error) {
     console.error('Error handling redirect:', error);
-    return new Response('Internal Server Error', { status: 500 });
+    return c.text('Internal Server Error', 500);
   }
+}
+
+function isCrawler(userAgent) {
+  const crawlers = ['Twitterbot', 'facebookexternalhit', 'Facebot', 'TelegramBot', 'Slackbot', 'Discordbot', 'WhatsApp', 'bingbot', 'Googlebot', 'Baiduspider', 'YandexBot', 'LinkedInBot'];
+  return crawlers.some(crawler => userAgent.includes(crawler));
 }
 
 // Verify Turnstile token
@@ -478,239 +488,555 @@ async function verifyTurnstile(token, secretKey) {
       method: 'POST',
       body: formData
     });
-
-    const result = await response.json();
-    return result;
+    return await response.json();
   } catch (error) {
     console.error('Turnstile verification error:', error);
     return { success: false };
   }
 }
 
-async function handleScheduled(env) {
-  let cursor = null;
-  do {
-    const { keys, list_complete, cursor: newCursor } = await env.vialinks.list({ cursor });
-    for (const key of keys) {
-      const linkDataString = await env.vialinks.get(key.name);
-      if (linkDataString) {
-        try {
-          const linkData = JSON.parse(linkDataString);
-          if (linkData.expires_at && new Date(linkData.expires_at) < new Date()) {
-            await deleteLink(env, key.name);
-          }
-        } catch (e) {
-          console.error('Error parsing JSON for key ' + key.name + ':', e);
-        }
-      }
-    }
-    cursor = newCursor;
-  } while (cursor);
+// Admin Logic Functions
+function isAdmin(c) {
+  const env = c.env;
+  if (!env.ADMIN_PW) return false;
+  return getCookie(c, 'admin_session') === env.ADMIN_PW;
 }
 
-// Helper to delete link and associated QR code
-async function deleteLink(env, key) {
-  // Delete from KV
-  await env.vialinks.delete(key);
+async function handleAdminPage(c) {
+  if (isAdmin(c)) {
+    return await serveAdminDashboard(c);
+  }
+  return await serveAdminLoginPage(c);
 }
 
-
-
-// Handle URL Lookup
-async function handleLookup(request, env, corsHeaders) {
+async function serveAdminLoginPage(c) {
+  const env = c.env;
+  const turnstileSiteKey = env.TURNSTILE_SITE_KEY || '0x4AAAAAAA-example-site-key';
+  let adminLoginHtml = '';
   try {
-    const body = await request.json();
-    let { query } = body;
-
-    if (!query) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: 'URL 또는 키를 입력해주세요'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
-    }
-
-    // Extract key from URL if full URL is provided
-    let key = query;
-    try {
-      const urlObj = new URL(query);
-      // Check if it matches our domain (optional, but good for safety if user pastes full short URL)
-      // For now, just assume the last part of the path is the key if it looks like a URL
-      const pathParts = urlObj.pathname.split('/').filter(p => p);
-      if (pathParts.length > 0) {
-        key = pathParts[pathParts.length - 1];
-      }
-    } catch (e) {
-      // Not a URL, assume it's a key
-      key = query.trim();
-    }
-
-    const linkDataString = await env.vialinks.get(key);
-
-    if (!linkDataString) {
-      return new Response(JSON.stringify({
-        status: false,
-        reason: '존재하지 않거나 만료된 URL입니다'
-      }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
-    }
-
-    const linkData = JSON.parse(linkDataString);
-
-    return new Response(JSON.stringify({
-      status: true,
-      key: key,
-      type: linkData.type,
-      url: linkData.url, // For 'url' type
-      // content: linkData.content, // For 'paste' type, we might not want to send full content here if it's large, but for now it's fine or we can just send metadata
-      created_at: linkData.created_at,
-      expires_at: linkData.expires_at
-    }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
-
-  } catch (error) {
-    console.error('Error handling lookup:', error);
-    return new Response(JSON.stringify({
-      status: false,
-      reason: '서버 오류가 발생했습니다'
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
-    });
+    adminLoginHtml = await getAsset(c, '/assets/templates/admin-login.html');
+  } catch (e) {
+    console.error('Failed to load admin-login.html:', e);
+    return c.text('Critical Error: Failed to load admin login assets.', 500);
   }
+  const html = adminLoginHtml.replace('{{TURNSTILE_SITE_KEY}}', turnstileSiteKey);
+  return c.html(html);
 }
 
-// Handle Admin Routes
-async function handleAdmin(request, env) {
-  const url = new URL(request.url);
-  const path = url.pathname;
-  const method = request.method;
+function getRemainingTime(expiresAt) {
+  if (!expiresAt) return '영구';
+  const now = new Date();
+  const expiry = new Date(expiresAt);
+  const diff = expiry - now;
+  if (diff <= 0) return '만료됨';
 
-  // Login Page
-  if (path === '/admin' && method === 'GET') {
-    // Check for session cookie
-    const cookie = request.headers.get('Cookie');
-    if (cookie && cookie.includes(`admin_session=${env.ADMIN_PW}`)) {
-      return await serveAdminPage(env);
-    }
-    return serveAdminLoginPage();
-  }
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-  // Login API
-  if (path === '/api/v1/admin/login' && method === 'POST') {
-    try {
-      const body = await request.json();
-      if (body.password === env.ADMIN_PW) {
-        return new Response(JSON.stringify({ success: true }), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Set-Cookie': `admin_session=${env.ADMIN_PW}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600`
-          }
-        });
-      } else {
-        return new Response(JSON.stringify({ success: false, reason: 'Incorrect password' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-    } catch (e) {
-      return new Response('Bad Request', { status: 400 });
-    }
-  }
-
-  // Delete Link API
-  if (path.startsWith('/api/v1/admin/link/') && method === 'DELETE') {
-    // Verify Auth
-    const cookie = request.headers.get('Cookie');
-    if (!cookie || !cookie.includes(`admin_session=${env.ADMIN_PW}`)) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    const key = path.substring('/api/v1/admin/link/'.length);
-    await deleteLink(env, key);
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  return new Response('Not Found', { status: 404 });
+  if (days > 0) return `${days}일 ${hours}시간`;
+  if (hours > 0) return `${hours}시간 ${minutes}분`;
+  return `${minutes}분`;
 }
 
-// Serve Admin Login Page
-function serveAdminLoginPage() {
-  return new Response(adminLoginHtml, { headers: { 'Content-Type': 'text/html' } });
+async function serveAdminDashboard(c) {
+  let adminDashboardHtml = '';
+  try {
+    adminDashboardHtml = await getAsset(c, '/assets/templates/admin-dashboard.html');
+  } catch (e) {
+    console.error('Failed to load admin-dashboard.html:', e);
+    return c.text('Critical Error: Failed to load admin dashboard assets.', 500);
+  }
+  return c.html(adminDashboardHtml);
 }
 
-// Serve Admin Dashboard
-async function serveAdminPage(env) {
-  // Fetch all links
-  let links = [];
+async function handleAdminDashboardData(c) {
+  if (!isAdmin(c)) return c.json({ success: false, reason: 'Unauthorized' }, 401);
+  const env = c.env;
+
+  // Read all KV pairs, archive expired ones, collect active ones
+  let activeLinks = [];
   let cursor = null;
   do {
     const list = await env.vialinks.list({ cursor });
-    for (const key of list.keys) {
-      const dataStr = await env.vialinks.get(key.name);
-      if (dataStr) {
-        try {
-          const data = JSON.parse(dataStr);
-          links.push({ key: key.name, ...data });
-        } catch (e) { }
-      }
+    for (const kvKey of list.keys) {
+      const dataStr = await env.vialinks.get(kvKey.name);
+      if (!dataStr) continue;
+      try {
+        const data = JSON.parse(dataStr);
+        if (data.expires_at && new Date(data.expires_at) < new Date()) {
+          // Archive expired link to D1 then delete from KV
+          const archived = await archiveLinkToD1(env, kvKey.name, data);
+          if (archived) await env.vialinks.delete(kvKey.name);
+        } else {
+          activeLinks.push({ key: kvKey.name, ...data, clicks: 0 });
+        }
+      } catch (e) { }
     }
     cursor = list.cursor;
   } while (cursor);
 
-  // Sort by created_at desc
-  links.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  activeLinks.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  const rows = links.map(link => {
-    const typeIcon = link.type === 'paste' ? '<i class="bi bi-file-text"></i>' : '<i class="bi bi-link-45deg"></i>';
-    const target = link.type === 'paste' ? 'Paste Content' : `<a href="${link.url}" target="_blank">${link.url}</a>`;
-    return `
-      <tr>
-        <td>${typeIcon} ${link.key}</td>
-        <td class="target-cell">${target}</td>
-        <td>${link.clicks || 0}</td>
-        <td>${new Date(link.created_at).toLocaleString()}</td>
-        <td>
-          <button class="btn-sm delete-btn" onclick="deleteLink('${link.key}')"><i class="bi bi-trash"></i></button>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  // Query analytics click counts
+  if (env.STATS && activeLinks.length > 0) {
+    const query = `SELECT sum(_sample_interval) as clicks, blob2 as uid, blob1 as link_key FROM vialinks_prod GROUP BY blob2, blob1`;
+    try {
+      const queryResult = await queryAnalytics(env, query);
+      if (queryResult && queryResult.data) {
+        const clicksMap = new Map();
+        queryResult.data.forEach(row => {
+          const count = Number(row.clicks) || 0;
+          if (row.uid && row.uid !== 'legacy') clicksMap.set(row.uid, count);
+          else if (row.link_key) clicksMap.set(row.link_key, count);
+        });
+        activeLinks.forEach(link => {
+          link.clicks = (link.uid && link.uid !== 'legacy')
+            ? (clicksMap.get(link.uid) || 0)
+            : (clicksMap.get(link.key) || 0);
+        });
+      }
+    } catch (e) { console.error("Failed to query Analytics Engine:", e); }
+  }
 
-  const html = adminDashboardHtml.replace('{{LINKS_TABLE}}', rows);
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  // Fetch archived links from D1
+  let expiredLinks = [];
+  if (env.DB) {
+    try {
+      const { results } = await env.DB.prepare('SELECT * FROM expired_links ORDER BY expired_at DESC LIMIT 100').all();
+      expiredLinks = results;
+    } catch (e) { console.error("D1 Error", e); }
+  }
+
+  return c.json({ success: true, activeLinks, expiredLinks });
 }
 
+async function handleAdminLogin(c) {
+  const env = c.env;
+  try {
+    const body = await c.req.json();
+    if (env.TURNSTILE_SECRET_KEY && body.turnstile_token) {
+      const tr = await verifyTurnstile(body.turnstile_token, env.TURNSTILE_SECRET_KEY);
+      if (!tr.success) return c.json({ success: false, reason: '보안 확인 실패' }, 400);
+    } else if (env.TURNSTILE_SECRET_KEY && !body.turnstile_token) {
+      return c.json({ success: false, reason: '보안 확인이 필요합니다' }, 400);
+    }
+
+    if (body.password === env.ADMIN_PW) {
+      setCookie(c, 'admin_session', env.ADMIN_PW, {
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+        maxAge: 604800 // 7 days
+      });
+      return c.json({ success: true });
+    } else {
+      return c.json({ success: false, reason: '비밀번호가 일치하지 않습니다' }, 401);
+    }
+  } catch (e) { return c.text('Bad Request', 400); }
+}
+
+async function handleAdminLogout(c) {
+  deleteCookie(c, 'admin_session', { path: '/' });
+  return c.json({ success: true });
+}
+
+async function handleAdminExpireLink(c, key) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+
+  const dataStr = await env.vialinks.get(key);
+  if (dataStr) {
+    let data;
+    try {
+      data = JSON.parse(dataStr);
+    } catch (e) {
+      console.error('JSON Parse Error:', e);
+      return c.json({ success: false, reason: '데이터 파싱 오류' }, 500);
+    }
+    const archived = await archiveLinkToD1(env, key, data);
+    if (archived) {
+      await env.vialinks.delete(key);
+      return c.json({ success: true });
+    } else {
+      return c.json({ success: false, reason: '아카이브 실패 (DB 연결 확인 필요)' }, 500);
+    }
+  }
+  return c.text('Not Found', 404);
+}
+
+async function handleAdminDeleteLink(c, key) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  const dataStr = await env.vialinks.get(key);
+  if (dataStr) {
+    const data = JSON.parse(dataStr);
+    if ((data.type === 'page' || data.type === 'image') && data.r2_key && env.R2) {
+      await env.R2.delete(data.r2_key);
+    }
+  }
+  await env.vialinks.delete(key);
+  return c.json({ success: true });
+}
+
+async function handleAdminDeleteExpiredLink(c, id) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  if (!env.DB) return c.json({ success: false, reason: 'DB not configured' }, 500);
+
+  const idInt = parseInt(id, 10);
+  const row = await env.DB.prepare('SELECT * FROM expired_links WHERE id = ?').bind(idInt).first();
+  if ((row?.type === 'page' || row?.type === 'image') && row?.r2_key && env.R2) {
+    await env.R2.delete(row.r2_key);
+  }
+  await env.DB.prepare('DELETE FROM expired_links WHERE id = ?').bind(idInt).run();
+  return c.json({ success: true });
+}
+
+async function handleAdminCreatePage(c) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  try {
+    const { key, content } = await c.req.json();
+    if (!key || !content) return c.json({ success: false, reason: '키와 페이지 내용이 필요합니다' }, 400);
+    if (!/^[a-zA-Z0-9\-_ㄱ-ㅎ가-힣]+$/.test(key)) return c.json({ success: false, reason: '키 형식이 올바르지 않습니다' }, 400);
+    if (RESERVED_KEYWORDS.includes(key.toLowerCase())) return c.json({ success: false, reason: '예약어는 사용할 수 없습니다' }, 400);
+    if (await isKeyAlreadyUsed(env, key)) return c.json({ success: false, reason: '이미 사용중인 키입니다' }, 409);
+
+    const uid = crypto.randomUUID();
+    const r2Key = `pages/${uid}.html`;
+    await env.R2.put(r2Key, content, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+    await env.vialinks.put(key, JSON.stringify({ uid, type: 'page', r2_key: r2Key, created_at: new Date().toISOString() }));
+    return c.json({ success: true, key });
+  } catch (e) {
+    console.error('Error creating page:', e);
+    return c.json({ success: false, reason: '서버 오류' }, 500);
+  }
+}
+
+async function handleAdminUpdateLink(c, key) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  try {
+    const dataStr = await env.vialinks.get(key);
+    if (!dataStr) return c.text('Not Found', 404);
+    const data = JSON.parse(dataStr);
+    const body = await c.req.json();
+
+    if (data.type === 'page') {
+      if (!body.content) return c.json({ success: false, reason: '페이지 내용이 필요합니다' }, 400);
+      await env.R2.put(data.r2_key, body.content, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+    } else if (data.type === 'paste') {
+      if (!body.content) return c.json({ success: false, reason: '내용이 필요합니다' }, 400);
+      data.content = body.content;
+    } else if (data.type === 'url') {
+      if (!body.url) return c.json({ success: false, reason: 'URL이 필요합니다' }, 400);
+      data.url = normalizeUrl(body.url);
+    } else {
+      return c.json({ success: false, reason: '수정할 수 없는 타입입니다' }, 400);
+    }
+
+    data.updated_at = new Date().toISOString();
+    await env.vialinks.put(key, JSON.stringify(data));
+    return c.json({ success: true });
+  } catch (e) {
+    console.error('Error updating link:', e);
+    return c.json({ success: false, reason: '서버 오류' }, 500);
+  }
+}
+
+async function handleAdminExtendLink(c, key) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  try {
+    const dataStr = await env.vialinks.get(key);
+    if (!dataStr) return c.text('Not Found', 404);
+    const data = JSON.parse(dataStr);
+    const { expires_in } = await c.req.json();
+
+    if (expires_in === 'permanent') {
+      delete data.expires_at;
+    } else {
+      const seconds = parseInt(expires_in, 10);
+      if (isNaN(seconds)) return c.json({ success: false, reason: '잘못된 만료 시간입니다' }, 400);
+      data.expires_at = new Date(Date.now() + seconds * 1000).toISOString();
+    }
+
+    await env.vialinks.put(key, JSON.stringify(data));
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ success: false, reason: '서버 오류' }, 500);
+  }
+}
+
+async function handleAdminCreateImage(c) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  try {
+    const formData = await c.req.formData();
+    const key = formData.get('key');
+    const file = formData.get('file');
+    if (!key || !file) return c.json({ success: false, reason: '키와 이미지 파일이 필요합니다' }, 400);
+    if (!/^[a-zA-Z0-9\-_ㄱ-ㅎ가-힣]+$/.test(key)) return c.json({ success: false, reason: '키 형식이 올바르지 않습니다' }, 400);
+    if (RESERVED_KEYWORDS.includes(key.toLowerCase())) return c.json({ success: false, reason: '예약어는 사용할 수 없습니다' }, 400);
+    if (await isKeyAlreadyUsed(env, key)) return c.json({ success: false, reason: '이미 사용중인 키입니다' }, 409);
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowedTypes.includes(file.type)) return c.json({ success: false, reason: '지원하지 않는 이미지 형식입니다 (png, jpg, gif, webp, svg)' }, 400);
+
+    const uid = crypto.randomUUID();
+    const ext = file.name.split('.').pop() || 'png';
+    const r2Key = `images/${uid}.${ext}`;
+    const arrayBuffer = await file.arrayBuffer();
+    await env.R2.put(r2Key, arrayBuffer, { httpMetadata: { contentType: file.type } });
+    await env.vialinks.put(key, JSON.stringify({ uid, type: 'image', r2_key: r2Key, content_type: file.type, created_at: new Date().toISOString() }));
+    return c.json({ success: true, key });
+  } catch (e) {
+    console.error('Error creating image:', e);
+    return c.json({ success: false, reason: '서버 오류' }, 500);
+  }
+}
+
+async function handleAdminPostPage(c) {
+  if (isAdmin(c)) {
+    let html = '';
+    try {
+      html = await getAsset(c, '/assets/templates/admin-post.html');
+    } catch (e) {
+      console.error('Failed to load admin-post.html:', e);
+      return c.text('Critical Error: Failed to load admin post assets.', 500);
+    }
+    return c.html(html);
+  }
+  return c.redirect('/admin');
+}
+
+async function handleAdminActivatePage(c, id) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  if (!env.DB) return c.json({ success: false, reason: 'DB not configured' }, 500);
+
+  const idInt = parseInt(id, 10);
+  const row = await env.DB.prepare('SELECT * FROM expired_links WHERE id = ?').bind(idInt).first();
+  if (!row || row.type !== 'page') return c.text('Not Found', 404);
+  if (await env.vialinks.get(row.key)) return c.json({ success: false, reason: '활성 상태 키와 충돌합니다' }, 409);
+
+  const uid = row.uid || crypto.randomUUID();
+  const r2Key = row.r2_key || `pages/${uid}.html`;
+  if (row.content) {
+    await env.R2.put(r2Key, row.content, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  } else {
+    const object = await env.R2.get(r2Key);
+    if (!object) return c.json({ success: false, reason: '복구할 페이지 HTML이 없습니다' }, 500);
+  }
+  await env.vialinks.put(row.key, JSON.stringify({ uid, type: 'page', r2_key: r2Key, created_at: row.created_at || new Date().toISOString(), updated_at: new Date().toISOString() }));
+  await env.DB.prepare('DELETE FROM expired_links WHERE id = ?').bind(idInt).run();
+  return c.json({ success: true });
+}
+
+async function handleAdminRawContent(c, key) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  const dataStr = await env.vialinks.get(key);
+  if (!dataStr) return c.text('Not Found', 404);
+  const data = JSON.parse(dataStr);
+  if (data.type === 'paste') return c.text(data.content || '');
+  if (data.type === 'page') {
+    const object = await env.R2.get(data.r2_key);
+    if (!object) return c.text('Not Found', 404);
+    return c.text(await object.text());
+  }
+  return c.text(data.url || '');
+}
+
+async function handleAdminRawExpiredContent(c, id) {
+  const env = c.env;
+  if (!isAdmin(c)) return c.text('Unauthorized', 401);
+  if (!env.DB) return c.json({ success: false, reason: 'DB not configured' }, 500);
+  const idInt = parseInt(id, 10);
+  const row = await env.DB.prepare('SELECT * FROM expired_links WHERE id = ?').bind(idInt).first();
+  if (!row) return c.text('Not Found', 404);
+  if (row.type === 'paste' || row.type === 'page') return c.text(row.content || '');
+  return c.text(row.original_url || '');
+}
+
+async function isKeyAlreadyUsed(env, key) {
+  const active = await env.vialinks.get(key);
+  if (active) return true;
+  if (!env.DB) return false;
+  const inactive = await env.DB.prepare('SELECT id FROM expired_links WHERE key = ? LIMIT 1').bind(key).first();
+  return !!inactive;
+}
+
+// Lookup Logic
+async function handleLookup(c) {
+  const env = c.env;
+  try {
+    const body = await c.req.json();
+    let { query } = body;
+    if (!query) return c.json({ status: false, reason: 'URL 또는 키를 입력해주세요' }, 400);
+
+    let key = query;
+    try {
+      const urlObj = new URL(query);
+      const pathParts = urlObj.pathname.split('/').filter(p => p);
+      if (pathParts.length > 0) key = decodeURIComponent(pathParts[pathParts.length - 1]);
+    } catch (e) { key = query.trim(); }
+
+    const dataStr = await env.vialinks.get(key);
+    if (!dataStr) return c.json({ status: false, reason: '존재하지 않거나 만료된 URL입니다' }, 404);
+
+    const data = JSON.parse(dataStr);
+    const result = { status: true, key, type: data.type, url: data.url, created_at: data.created_at, expires_at: data.expires_at };
+    if (data.is_encrypted) result.is_encrypted = true;
+    if (data.content_type) result.content_type = data.content_type;
+    return c.json(result);
+  } catch (e) { return c.json({ status: false, reason: '서버 오류가 발생했습니다' }, 500); }
+}
+
+// Utility functions
 function escapeHtml(text) {
   if (!text) return text;
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function servePastePage(content, key) {
-  const escapedContent = escapeHtml(content);
-  const html = pasteHtml
-    .replace(/{{PASTE_KEY}}/g, key)
-    .replace('{{PASTE_CONTENT}}', escapedContent);
-
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+async function servePastePage(c, content, key) {
+  const escaped = escapeHtml(content);
+  let preview = content.substring(0, 150).replace(/\r?\n|\r/g, " ");
+  if (content.length > 150) preview += "....";
+  let pasteHtml = '';
+  try {
+    pasteHtml = await getAsset(c, '/assets/templates/paste.html');
+  } catch (e) {
+    console.error('Failed to load paste.html:', e);
+    return c.text('Critical Error: Failed to load paste assets.', 500);
+  }
+  const html = pasteHtml.replace(/\{\{PASTE_KEY\}\}/g, key).replace('{{PASTE_CONTENT}}', escaped).replace('{{PASTE_PREVIEW}}', escapeHtml(preview));
+  return c.html(html);
 }
 
-function serveErrorPage(reason) {
+async function serveErrorPage(c, reason) {
+  let errorHtml = '';
+  try {
+    errorHtml = await getAsset(c, '/assets/templates/error.html');
+  } catch (e) {
+    console.error('Failed to load error.html from assets:', e);
+    // Fallback error page
+    return c.html(`<!DOCTYPE html><html><body><h1>Error</h1><p>${reason}</p></body></html>`, 404);
+  }
   const html = errorHtml.replace('{{REASON}}', reason);
-  return new Response(html, {
-    status: 404,
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
-  });
+  return c.html(html, 404);
 }
+
+async function servePasswordPage(c, key, type, encData = null) {
+  let passwordHtml = '';
+  try {
+    passwordHtml = await getAsset(c, '/assets/templates/password.html');
+  } catch (e) {
+    console.error('Failed to load password.html:', e);
+    return c.text('Critical Error: Failed to load password page assets.', 500);
+  }
+  let html = passwordHtml.replace(/\{\{KEY\}\}/g, key).replace(/\{\{TYPE\}\}/g, type);
+  if (encData) {
+    html = html.replace('/*{{ENCRYPTED_DATA_JSON}}*/ null', JSON.stringify(encData)).replace('{{IS_ENCRYPTED}}', 'true');
+  } else {
+    html = html.replace('{{IS_ENCRYPTED}}', 'false').replace('/*{{ENCRYPTED_DATA_JSON}}*/ null', 'null');
+  }
+  return c.html(html);
+}
+
+async function queryAnalytics(env, query) {
+  if (!env.CF_ACCOUNT_ID || !env.CF_API_TOKEN) {
+    console.error("Missing CF_ACCOUNT_ID or CF_API_TOKEN environment variables. Analytics query skipped.");
+    return { data: [] };
+  }
+  try {
+    const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.CF_API_TOKEN}`
+      },
+      body: query,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Analytics Engine error: ${response.status} - ${errorText}`);
+      return { data: [] };
+    }
+    return await response.json();
+  } catch (e) {
+    console.error('Analytics Engine fetch failed:', e);
+    return { data: [] };
+  }
+}
+
+
+async function archiveLinkToD1(env, key, data) {
+  if (!env.DB) return false;
+  try {
+    let archivedContent = data.content || null;
+    if ((data.type === 'page') && data.r2_key && env.R2) {
+      const object = await env.R2.get(data.r2_key);
+      if (object) archivedContent = await object.text();
+    }
+    if (data.type === 'image' && data.r2_key && env.R2) {
+      archivedContent = null;
+    }
+    let clicks = 0;
+    if (env.STATS) {
+      const query = (data.uid && data.uid !== 'legacy')
+        ? `SELECT sum(_sample_interval) as clicks FROM vialinks_prod WHERE blob2 = '${data.uid}'`
+        : `SELECT sum(_sample_interval) as clicks FROM vialinks_prod WHERE blob1 = '${key}'`;
+      const res = await queryAnalytics(env, query);
+      if (res?.data?.length > 0) clicks = Number(res.data[0].clicks) || 0;
+    }
+
+    // Detect available columns by attempting inserts, falling back gracefully
+    // Known real schema: id, key, type, original_url, content, created_at, expired_at, clicks, uid
+    // Optional columns (may not exist in older deployments): r2_key
+
+    // Build insert dynamically based on what columns exist
+    const tryInsert = async (includeUid, includeR2Key) => {
+      const cols = ['key'];
+      const placeholders = ['?'];
+      const binds = [key];
+
+      if (includeUid) { cols.push('uid'); placeholders.push('?'); binds.push(data.uid || null); }
+      cols.push('type'); placeholders.push('?'); binds.push(data.type);
+      cols.push('original_url'); placeholders.push('?'); binds.push(data.url || null);
+      cols.push('content'); placeholders.push('?'); binds.push(archivedContent);
+      if (includeR2Key) { cols.push('r2_key'); placeholders.push('?'); binds.push(data.r2_key || null); }
+      cols.push('created_at'); placeholders.push('?'); binds.push(data.created_at || new Date().toISOString());
+      cols.push('expired_at'); placeholders.push('?'); binds.push(data.expires_at || new Date().toISOString());
+      cols.push('clicks'); placeholders.push('?'); binds.push(clicks);
+
+      const sql = `INSERT INTO expired_links (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`;
+      await env.DB.prepare(sql).bind(...binds).run();
+    };
+
+    // Try all combinations, removing optional columns one by one if they don't exist
+    let inserted = false;
+    for (const [uid, r2] of [[true, true], [true, false], [false, true], [false, false]]) {
+      try {
+        await tryInsert(uid, r2);
+        inserted = true;
+        if (!uid) console.warn('Inserted without uid column. Run: ALTER TABLE expired_links ADD COLUMN uid TEXT;');
+        if (!r2) console.warn('Inserted without r2_key column. Run: ALTER TABLE expired_links ADD COLUMN r2_key TEXT;');
+        break;
+      } catch (e) {
+        if (e.message && e.message.includes('no column named')) continue;
+        throw e;
+      }
+    }
+    if (!inserted) throw new Error('Could not insert into expired_links: no compatible schema found');
+
+    return true;
+  } catch (e) {
+    console.error('Archive Error:', e);
+    return false;
+  }
+}
+
+export default {
+  fetch: app.fetch,
+};

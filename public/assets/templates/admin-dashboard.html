@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>관리자 대시보드</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #ecf0f3;
+            font-family: "Montserrat", sans-serif;
+            color: #181818;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            background-color: #ecf0f3;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 10px 10px 10px #d1d9e6, -10px -10px 10px #f9f9f9;
+            overflow-x: auto;
+            margin-bottom: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #d1d9e6;
+        }
+
+        .target-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            border-radius: 15px;
+            border: none;
+            background-color: #ecf0f3;
+            box-shadow: 3px 3px 6px #d1d9e6, -3px -3px 6px #f9f9f9;
+            cursor: pointer;
+            color: #4B70E2;
+            margin-right: 4px;
+        }
+
+        .delete-btn {
+            color: #e24b4b;
+        }
+
+        a {
+            color: #4B70E2;
+            text-decoration: none;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-input,
+        .form-textarea {
+            width: 100%;
+            border: none;
+            border-radius: 10px;
+            background: #ecf0f3;
+            box-shadow: inset 4px 4px 8px #d1d9e6, inset -4px -4px 8px #f9f9f9;
+            padding: 10px;
+        }
+
+        .form-textarea {
+            min-height: 180px;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(3px);
+        }
+
+        .modal-content {
+            background-color: #ecf0f3;
+            margin: 8% auto;
+            padding: 20px;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 12px;
+        }
+
+        .close {
+            float: right;
+            font-size: 28px;
+            cursor: pointer;
+        }
+
+        .loading-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+            border: 3px solid #d1d9e6;
+            border-top-color: #4B70E2;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>관리자 대시보드</h1>
+            <div>
+                <a href="/admin/post" class="btn-sm" style="text-decoration:none; margin-right:8px;"><i
+                        class="bi bi-plus-circle"></i> 새 링크 생성</a>
+                <button class="btn-sm" onclick="logout()">로그아웃</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>활성 링크/페이지</h2>
+            <div id="active-loading" class="loading-state">
+                <div class="spinner"></div>
+                <p>만료된 링크를 정리하고 데이터를 불러오는 중...</p>
+            </div>
+            <table id="active-table" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Target / Content</th>
+                        <th>Clicks</th>
+                        <th>Remaining</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="links-table"></tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>비활성 링크/페이지 (최근 100개)</h2>
+            <div id="expired-loading" class="loading-state" style="display:none;">
+                <div class="spinner"></div>
+                <p>불러오는 중...</p>
+            </div>
+            <table id="expired-table" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Target / Content</th>
+                        <th>Clicks</th>
+                        <th>Expired At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="expired-links-table"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="rawModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeRawModal()">&times;</span>
+            <h2>Raw Content</h2>
+            <textarea id="raw-content-area" class="form-textarea" readonly></textarea>
+        </div>
+    </div>
+
+    <div id="editItemModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditItemModal()">&times;</span>
+            <h2 id="edit-item-title">아이템 수정</h2>
+            <div class="form-group"><input id="edit-item-key" class="form-input" readonly></div>
+            <div class="form-group"><textarea id="edit-item-content" class="form-textarea"></textarea></div>
+            <button class="btn-sm" onclick="updateItem()"><i class="bi bi-save"></i> 저장</button>
+        </div>
+    </div>
+
+    <script>
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function getRemainingTime(expiresAt) {
+            if (!expiresAt) return '영구';
+            const diff = new Date(expiresAt) - new Date();
+            if (diff <= 0) return '만료됨';
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            if (days > 0) return `${days}일 ${hours}시간`;
+            if (hours > 0) return `${hours}시간 ${minutes}분`;
+            return `${minutes}분`;
+        }
+
+        function renderActiveLinks(links) {
+            const tbody = document.getElementById('links-table');
+            tbody.innerHTML = links.map(link => {
+                const typeIcon = link.type === 'paste' ? '<i class="bi bi-file-text"></i>'
+                    : link.type === 'page' ? '<i class="bi bi-file-code"></i>'
+                    : link.type === 'image' ? '<i class="bi bi-image"></i>'
+                    : '<i class="bi bi-link-45deg"></i>';
+                const passwordIcon = link.is_encrypted ? ' <i class="bi bi-lock-fill" title="비밀번호 보호됨"></i>' : '';
+                const safeKey = escapeHtml(link.key);
+                const target = link.type === 'paste'
+                    ? '<span>Paste Content</span>'
+                    : link.type === 'page'
+                    ? `<a href="/${encodeURIComponent(link.key)}" target="_blank" rel="noopener noreferrer">/${safeKey}</a>`
+                    : link.type === 'image'
+                    ? `<a href="/${encodeURIComponent(link.key)}" target="_blank" rel="noopener noreferrer">/${safeKey}</a>`
+                    : `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.url)}</a>`;
+                const rawBtn = (link.type === 'paste' || link.type === 'page')
+                    ? `<button class="btn-sm" onclick="showRawContent('${encodeURIComponent(link.key)}', false)" title="Raw 보기"><i class="bi bi-braces"></i></button>` : '';
+                const editBtn = (link.type === 'page' || link.type === 'url' || link.type === 'paste')
+                    ? `<button class="btn-sm" onclick="editItem('${encodeURIComponent(link.key)}', '${link.type}')" title="수정"><i class="bi bi-pencil-square"></i></button>` : '';
+                const extendBtn = `<button class="btn-sm" onclick="extendLink('${encodeURIComponent(link.key)}')" title="만료 연장"><i class="bi bi-clock-history"></i></button>`;
+                const deactivateBtn = `<button class="btn-sm delete-btn" onclick="expireLink('${encodeURIComponent(link.key)}')" title="비활성화"><i class="bi bi-pause-circle"></i></button>`;
+                const deleteBtn = `<button class="btn-sm delete-btn" onclick="deleteLink('${encodeURIComponent(link.key)}')" title="삭제"><i class="bi bi-trash"></i></button>`;
+                return `<tr><td>${typeIcon}${passwordIcon} ${safeKey}</td><td class="target-cell">${target}</td><td>${link.clicks}</td><td>${getRemainingTime(link.expires_at)}</td><td>${new Date(link.created_at).toLocaleString()}</td><td>${rawBtn}${editBtn}${extendBtn}${deactivateBtn}${deleteBtn}</td></tr>`;
+            }).join('');
+            document.getElementById('active-loading').style.display = 'none';
+            document.getElementById('active-table').style.display = '';
+        }
+
+        function renderExpiredLinks(links) {
+            const tbody = document.getElementById('expired-links-table');
+            tbody.innerHTML = links.map(link => {
+                const typeIcon = link.type === 'paste' ? '<i class="bi bi-file-text"></i>'
+                    : link.type === 'page' ? '<i class="bi bi-file-code"></i>'
+                    : link.type === 'image' ? '<i class="bi bi-image"></i>'
+                    : '<i class="bi bi-link-45deg"></i>';
+                const target = link.type === 'paste'
+                    ? 'Paste Content (Archived)'
+                    : link.type === 'page'
+                    ? '<span>Page HTML (Archived)</span>'
+                    : `<a href="${escapeHtml(link.original_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.original_url)}</a>`;
+                const rawBtn = (link.type === 'paste' || link.type === 'page')
+                    ? `<button class="btn-sm" onclick="showRawContent('${link.id}', true)" title="Raw 보기"><i class="bi bi-braces"></i></button>` : '';
+                const activateBtn = link.type === 'page'
+                    ? `<button class="btn-sm" onclick="activatePage('${link.id}')" title="활성화"><i class="bi bi-play-circle"></i></button>` : '';
+                return `<tr><td>${typeIcon} ${escapeHtml(link.key)}</td><td class="target-cell">${target}</td><td>${link.clicks}</td><td>${new Date(link.expired_at).toLocaleString()}</td><td>${rawBtn}${activateBtn}<button class="btn-sm delete-btn" onclick="deleteExpiredLink('${link.id}')"><i class="bi bi-trash"></i></button></td></tr>`;
+            }).join('');
+            document.getElementById('expired-table').style.display = '';
+        }
+
+        async function loadDashboardData() {
+            try {
+                const res = await fetch('/api/v1/admin/dashboard-data');
+                if (!res.ok) {
+                    document.getElementById('active-loading').innerHTML = '<p style="color:#e24b4b;">데이터 로드 실패. 페이지를 새로고침해 주세요.</p>';
+                    return;
+                }
+                const data = await res.json();
+                renderActiveLinks(data.activeLinks || []);
+                renderExpiredLinks(data.expiredLinks || []);
+            } catch (e) {
+                document.getElementById('active-loading').innerHTML = '<p style="color:#e24b4b;">데이터 로드 중 오류가 발생했습니다.</p>';
+            }
+        }
+
+        loadDashboardData();
+
+        async function logout() {
+            const res = await fetch('/api/v1/admin/logout', { method: 'POST' });
+            if (res.ok) window.location.href = '/admin';
+            else alert('로그아웃에 실패했습니다.');
+        }
+        async function deleteLink(key) {
+            if (!confirm('정말 삭제하시겠습니까?')) return;
+            const res = await fetch(`/api/v1/admin/link/${key}`, { method: 'DELETE' });
+            if (res.ok) location.reload(); else alert('삭제 실패');
+        }
+        async function expireLink(key) {
+            if (!confirm('이 링크를 비활성화하시겠습니까?')) return;
+            const res = await fetch(`/api/v1/admin/link/${key}/expire`, { method: 'POST' });
+            if (res.ok) location.reload(); else alert('비활성화 실패');
+        }
+        async function activatePage(id) {
+            const res = await fetch(`/api/v1/admin/page/${id}/activate`, { method: 'POST' });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) location.reload(); else alert(data.reason || '활성화 실패');
+        }
+        async function deleteExpiredLink(id) {
+            if (!confirm('기록을 영구 삭제하시겠습니까?')) return;
+            const res = await fetch(`/api/v1/admin/expired-link/${id}`, { method: 'DELETE' });
+            if (res.ok) location.reload(); else alert('삭제 실패');
+        }
+        async function showRawContent(id, isExpired) {
+            const endpoint = isExpired ? `/api/v1/admin/expired-link/${id}/raw` : `/api/v1/admin/link/${id}/raw`;
+            const res = await fetch(endpoint);
+            if (!res.ok) return alert('Raw 조회 실패');
+            document.getElementById('raw-content-area').value = await res.text();
+            document.getElementById('rawModal').style.display = 'block';
+        }
+        function closeRawModal() { document.getElementById('rawModal').style.display = 'none'; }
+
+        let currentEditingType = '';
+        async function editItem(encodedKey, type) {
+            const key = decodeURIComponent(encodedKey);
+            currentEditingType = type;
+            const res = await fetch(`/api/v1/admin/link/${encodedKey}/raw`);
+            if (!res.ok) return alert('데이터 로드 실패');
+            const content = await res.text();
+
+            document.getElementById('edit-item-key').value = key;
+            document.getElementById('edit-item-title').textContent = type === 'url' ? 'URL 수정' : (type === 'paste' ? '텍스트 수정' : '페이지 수정');
+
+            const contentArea = document.getElementById('edit-item-content');
+            contentArea.value = content;
+            contentArea.placeholder = type === 'url' ? 'https://example.com' : '내용을 입력하세요';
+
+            document.getElementById('editItemModal').style.display = 'block';
+        }
+        async function updateItem() {
+            const key = document.getElementById('edit-item-key').value;
+            const content = document.getElementById('edit-item-content').value;
+            const payload = currentEditingType === 'url' ? { url: content } : { content: content };
+
+            const res = await fetch(`/api/v1/admin/link/${encodeURIComponent(key)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) location.reload(); else alert(data.reason || '수정 실패');
+        }
+        function closeEditItemModal() { document.getElementById('editItemModal').style.display = 'none'; }
+
+        async function extendLink(key) {
+            const { value: expires_in } = await Swal.fire({
+                title: '만료 시간 연장',
+                input: 'select',
+                inputOptions: {
+                    '3600': '1시간',
+                    '86400': '1일',
+                    '604800': '7일',
+                    '2592000': '30일',
+                    'permanent': '영구'
+                },
+                inputPlaceholder: '연장할 시간을 선택하세요',
+                showCancelButton: true,
+                confirmButtonText: '연장하기',
+                cancelButtonText: '취소'
+            });
+
+            if (expires_in) {
+                const res = await fetch(`/api/v1/admin/link/${key}/extend`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ expires_in })
+                });
+                if (res.ok) location.reload(); else alert('연장 실패');
+            }
+        }
+    </script>
+</body>
+
+</html>
