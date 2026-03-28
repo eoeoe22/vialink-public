@@ -148,18 +148,17 @@
         </div>
 
         <div class="card">
-            <h2><i class="bi bi-image"></i> 이미지 호스팅</h2>
+            <h2><i class="bi bi-file-earmark-arrow-up"></i> 파일 업로드</h2>
             <div class="form-group">
-                <input id="new-image-key" class="form-input" placeholder="이미지 키 (예: banner)">
+                <input id="new-image-key" class="form-input" placeholder="파일 키 (예: banner)">
             </div>
             <div class="form-group file-input-wrapper">
-                <input type="file" id="new-image-file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-                    onchange="previewImage(this)">
+                <input type="file" id="new-image-file" onchange="previewFile(this)">
             </div>
             <div id="image-preview" class="preview-container" style="display:none;">
                 <img id="image-preview-img" src="" alt="미리보기">
             </div>
-            <button class="btn-sm" onclick="uploadImage()" style="margin-top: 12px;"><i class="bi bi-upload"></i> 이미지
+            <button class="btn-sm" onclick="uploadImage()" style="margin-top: 12px;"><i class="bi bi-upload"></i> 파일
                 업로드</button>
             <div id="image-status" class="status-msg" style="display:none;"></div>
         </div>
@@ -193,10 +192,10 @@
             }
         }
 
-        function previewImage(input) {
+        function previewFile(input) {
             const preview = document.getElementById('image-preview');
             const img = document.getElementById('image-preview-img');
-            if (input.files && input.files[0]) {
+            if (input.files && input.files[0] && input.files[0].type.startsWith('image/')) {
                 const reader = new FileReader();
                 reader.onload = function (e) {
                     img.src = e.target.result;
@@ -212,7 +211,7 @@
             const key = document.getElementById('new-image-key').value.trim();
             const fileInput = document.getElementById('new-image-file');
             const file = fileInput.files[0];
-            if (!key || !file) return showStatus('image-status', '키와 이미지 파일이 필요합니다', false);
+            if (!key || !file) return showStatus('image-status', '키와 파일이 필요합니다', false);
             const formData = new FormData();
             formData.append('key', key);
             formData.append('file', file);
@@ -220,7 +219,7 @@
                 const res = await fetch('/api/v1/admin/image', { method: 'POST', body: formData });
                 const data = await res.json().catch(() => ({}));
                 if (res.ok && data.success) {
-                    showStatus('image-status', `이미지가 업로드되었습니다: /${key}`, true);
+                    showStatus('image-status', `파일이 업로드되었습니다: /${key}`, true);
                     document.getElementById('new-image-key').value = '';
                     fileInput.value = '';
                     document.getElementById('image-preview').style.display = 'none';

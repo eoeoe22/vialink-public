@@ -243,6 +243,7 @@
                 const typeIcon = link.type === 'paste' ? '<i class="bi bi-file-text"></i>'
                     : link.type === 'page' ? '<i class="bi bi-file-code"></i>'
                     : link.type === 'image' ? '<i class="bi bi-image"></i>'
+                    : link.type === 'file' ? '<i class="bi bi-file-earmark"></i>'
                     : '<i class="bi bi-link-45deg"></i>';
                 const passwordIcon = link.is_encrypted ? ' <i class="bi bi-lock-fill" title="비밀번호 보호됨"></i>' : '';
                 const safeKey = escapeHtml(link.key);
@@ -250,7 +251,7 @@
                     ? '<span>Paste Content</span>'
                     : link.type === 'page'
                     ? `<a href="/${encodeURIComponent(link.key)}" target="_blank" rel="noopener noreferrer">/${safeKey}</a>`
-                    : link.type === 'image'
+                    : (link.type === 'image' || link.type === 'file')
                     ? `<a href="/${encodeURIComponent(link.key)}" target="_blank" rel="noopener noreferrer">/${safeKey}</a>`
                     : `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.url)}</a>`;
                 const rawBtn = (link.type === 'paste' || link.type === 'page')
@@ -272,6 +273,7 @@
                 const typeIcon = link.type === 'paste' ? '<i class="bi bi-file-text"></i>'
                     : link.type === 'page' ? '<i class="bi bi-file-code"></i>'
                     : link.type === 'image' ? '<i class="bi bi-image"></i>'
+                    : link.type === 'file' ? '<i class="bi bi-file-earmark"></i>'
                     : '<i class="bi bi-link-45deg"></i>';
                 const target = link.type === 'paste'
                     ? 'Paste Content (Archived)'

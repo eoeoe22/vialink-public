@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File - {{FILE_KEY}}</title>
+    <meta property="og:title" content="VIALinks">
+    <meta property="og:description" content="{{FILE_NAME}}">
+    <meta property="og:image" content="https://sekaich.at/images/etx/viapreview.png">
+    <meta name="theme-color" content="#87CEEB">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #ecf0f3;
+            font-family: "Montserrat", sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #181818;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            background-color: #ecf0f3;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 10px 10px 10px #d1d9e6, -10px -10px 10px #f9f9f9;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #d1d9e6;
+        }
+
+        .file-info {
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: inset 5px 5px 10px #d1d9e6, inset -5px -5px 10px #f9f9f9;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-icon {
+            font-size: 2.5em;
+            color: #4B70E2;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            font-size: 1.1em;
+            font-weight: bold;
+            word-break: break-all;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: none;
+            background-color: #ecf0f3;
+            box-shadow: 3px 3px 6px #d1d9e6, -3px -3px 6px #f9f9f9;
+            cursor: pointer;
+            color: #4B70E2;
+            font-weight: bold;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: 0.2s;
+        }
+
+        .btn:active {
+            box-shadow: 1px 1px 2px #d1d9e6, -1px -1px 2px #f9f9f9;
+            transform: translateY(1px);
+        }
+
+        .btn-download {
+            padding: 12px 24px;
+            font-size: 1em;
+            margin-top: 20px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .pdf-preview {
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 3px 3px 6px #d1d9e6, -3px -3px 6px #f9f9f9;
+        }
+
+        .pdf-preview iframe {
+            width: 100%;
+            height: 80vh;
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h3><i class="bi bi-file-earmark"></i> File: {{FILE_KEY}}</h3>
+            <div class="header-actions">
+                <a href="/" class="btn"><i class="bi bi-house"></i> Home</a>
+            </div>
+        </div>
+        <div class="file-info">
+            <div class="file-icon"><i class="bi bi-file-earmark-arrow-down"></i></div>
+            <div class="file-details">
+                <div class="file-name">{{FILE_NAME}}</div>
+            </div>
+        </div>
+        <div style="text-align: center;">
+            <a href="{{DOWNLOAD_URL}}" class="btn btn-download"><i class="bi bi-download"></i> 다운로드</a>
+        </div>
+        {{PDF_SECTION}}
+    </div>
+</body>
+
+</html>

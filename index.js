@@ -437,6 +437,39 @@ async function handleRedirect(c, key) {
       });
     }
 
+    if (linkData.type === 'file') {
+      const raw = c.req.query('raw');
+      if (raw === '1') {
+        const object = await env.R2.get(linkData.r2_key);
+        if (!object) {
+          return await serveErrorPage(c, '파일을 찾을 수 없습니다');
+        }
+        return new Response(object.body, {
+          headers: {
+            'Content-Type': linkData.content_type || 'application/octet-stream',
+            'Cache-Control': 'public, max-age=3600'
+          }
+        });
+      }
+      const download = c.req.query('download');
+      if (download === '1') {
+        const object = await env.R2.get(linkData.r2_key);
+        if (!object) {
+          return await serveErrorPage(c, '파일을 찾을 수 없습니다');
+        }
+        const fileName = linkData.original_name || key;
+        return new Response(object.body, {
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
+            'Cache-Control': 'public, max-age=3600'
+          }
+        });
+      }
+      const isPdf = (linkData.content_type || '').toLowerCase() === 'application/pdf';
+      return await serveFilePage(c, key, linkData, isPdf);
+    }
+
     const userAgent = c.req.header('User-Agent') || '';
     if (isCrawler(userAgent)) {
       const targetUrl = linkData.url;
@@ -554,8 +587,9 @@ async function handleAdminDashboardData(c) {
   if (!isAdmin(c)) return c.json({ success: false, reason: 'Unauthorized' }, 401);
   const env = c.env;
 
-  // Read all KV pairs, archive expired ones, collect active ones
+  // Read all KV pairs, collect active ones and expired ones separately
   let activeLinks = [];
+  let expiredToArchive = [];
   let cursor = null;
   do {
     const list = await env.vialinks.list({ cursor });
@@ -565,9 +599,8 @@ async function handleAdminDashboardData(c) {
       try {
         const data = JSON.parse(dataStr);
         if (data.expires_at && new Date(data.expires_at) < new Date()) {
-          // Archive expired link to D1 then delete from KV
-          const archived = await archiveLinkToD1(env, kvKey.name, data);
-          if (archived) await env.vialinks.delete(kvKey.name);
+          // Collect expired links for background archiving (non-blocking)
+          expiredToArchive.push({ key: kvKey.name, data });
         } else {
           activeLinks.push({ key: kvKey.name, ...data, clicks: 0 });
         }
@@ -606,6 +639,20 @@ async function handleAdminDashboardData(c) {
       const { results } = await env.DB.prepare('SELECT * FROM expired_links ORDER BY expired_at DESC LIMIT 100').all();
       expiredLinks = results;
     } catch (e) { console.error("D1 Error", e); }
+  }
+
+  // Archive expired links in background without blocking the response
+  if (expiredToArchive.length > 0) {
+    c.executionCtx.waitUntil(
+      (async () => {
+        for (const { key, data } of expiredToArchive) {
+          try {
+            const archived = await archiveLinkToD1(env, key, data);
+            if (archived) await env.vialinks.delete(key);
+          } catch (e) { console.error('Background archive error:', e); }
+        }
+      })()
+    );
   }
 
   return c.json({ success: true, activeLinks, expiredLinks });
@@ -776,20 +823,20 @@ async function handleAdminCreateImage(c) {
     const formData = await c.req.formData();
     const key = formData.get('key');
     const file = formData.get('file');
-    if (!key || !file) return c.json({ success: false, reason: '키와 이미지 파일이 필요합니다' }, 400);
+    if (!key || !file) return c.json({ success: false, reason: '키와 파일이 필요합니다' }, 400);
     if (!/^[a-zA-Z0-9\-_ㄱ-ㅎ가-힣]+$/.test(key)) return c.json({ success: false, reason: '키 형식이 올바르지 않습니다' }, 400);
     if (RESERVED_KEYWORDS.includes(key.toLowerCase())) return c.json({ success: false, reason: '예약어는 사용할 수 없습니다' }, 400);
     if (await isKeyAlreadyUsed(env, key)) return c.json({ success: false, reason: '이미 사용중인 키입니다' }, 409);
 
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
-    if (!allowedTypes.includes(file.type)) return c.json({ success: false, reason: '지원하지 않는 이미지 형식입니다 (png, jpg, gif, webp, svg)' }, 400);
-
     const uid = crypto.randomUUID();
-    const ext = file.name.split('.').pop() || 'png';
-    const r2Key = `images/${uid}.${ext}`;
+    const ext = file.name.split('.').pop() || 'bin';
+    const contentType = file.type || 'application/octet-stream';
+    const isImage = contentType.startsWith('image/');
+    const r2Key = `files/${uid}.${ext}`;
     const arrayBuffer = await file.arrayBuffer();
-    await env.R2.put(r2Key, arrayBuffer, { httpMetadata: { contentType: file.type } });
-    await env.vialinks.put(key, JSON.stringify({ uid, type: 'image', r2_key: r2Key, content_type: file.type, created_at: new Date().toISOString() }));
+    await env.R2.put(r2Key, arrayBuffer, { httpMetadata: { contentType } });
+    const type = isImage ? 'image' : 'file';
+    await env.vialinks.put(key, JSON.stringify({ uid, type, r2_key: r2Key, content_type: contentType, original_name: file.name, created_at: new Date().toISOString() }));
     return c.json({ success: true, key });
   } catch (e) {
     console.error('Error creating image:', e);
@@ -912,6 +959,28 @@ async function servePastePage(c, content, key) {
     return c.text('Critical Error: Failed to load paste assets.', 500);
   }
   const html = pasteHtml.replace(/\{\{PASTE_KEY\}\}/g, key).replace('{{PASTE_CONTENT}}', escaped).replace('{{PASTE_PREVIEW}}', escapeHtml(preview));
+  return c.html(html);
+}
+
+async function serveFilePage(c, key, linkData, isPdf) {
+  let fileHtml = '';
+  try {
+    fileHtml = await getAsset(c, '/assets/templates/file.html');
+  } catch (e) {
+    console.error('Failed to load file.html:', e);
+    return c.text('Critical Error: Failed to load file assets.', 500);
+  }
+  const fileName = escapeHtml(linkData.original_name || key);
+  const downloadUrl = `/${encodeURIComponent(key)}?download=1`;
+  const rawUrl = `/${encodeURIComponent(key)}?raw=1`;
+  const pdfSection = isPdf
+    ? `<div class="pdf-preview"><iframe src="${rawUrl}" title="PDF 미리보기"></iframe></div>`
+    : '';
+  const html = fileHtml
+    .replace(/\{\{FILE_KEY\}\}/g, escapeHtml(key))
+    .replace(/\{\{FILE_NAME\}\}/g, fileName)
+    .replace(/\{\{DOWNLOAD_URL\}\}/g, downloadUrl)
+    .replace(/\{\{PDF_SECTION\}\}/g, pdfSection);
   return c.html(html);
 }
 
