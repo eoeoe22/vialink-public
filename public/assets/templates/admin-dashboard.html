@@ -145,6 +145,33 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Cleanup Progress Styles */
+        .cleanup-progress-bar {
+            height: 6px;
+            width: 100%;
+            background-color: #d1d9e6;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 6px;
+            box-shadow: inset 2px 2px 4px #d1d9e6, inset -2px -2px 4px #f9f9f9;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4B70E2, #6bb9f0);
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .cleanup-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 20px;
+            padding: 0 4px;
+        }
     </style>
 </head>
 
@@ -160,10 +187,20 @@
         </div>
 
         <div class="card">
+            <div id="cleanup-container" style="display:none;">
+                <div class="cleanup-progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <div class="cleanup-info">
+                    <span id="cleanup-status-text">남은 링크를 점검하고 정리하는 중...</span>
+                    <span id="cleanup-stats">0 processed</span>
+                </div>
+            </div>
+
             <h2>활성 링크/페이지</h2>
             <div id="active-loading" class="loading-state">
                 <div class="spinner"></div>
-                <p>만료된 링크를 정리하고 데이터를 불러오는 중...</p>
+                <p>데이터를 불러오는 중...</p>
             </div>
             <table id="active-table" style="display:none;">
                 <thead>
@@ -237,9 +274,24 @@
             return `${minutes}분`;
         }
 
-        function renderActiveLinks(links) {
+        let activeLinksStore = [];
+        let totalProcessed = 0;
+
+        function renderActiveLinks(links, append = false) {
+            if (append) {
+                activeLinksStore = [...activeLinksStore, ...links];
+            } else {
+                activeLinksStore = links;
+            }
+            
+            // Deduplicate by key (just in case) and sort by created_at desc
+            const uniqueMap = new Map();
+            activeLinksStore.forEach(l => uniqueMap.set(l.key, l));
+            activeLinksStore = Array.from(uniqueMap.values());
+            activeLinksStore.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
             const tbody = document.getElementById('links-table');
-            tbody.innerHTML = links.map(link => {
+            tbody.innerHTML = activeLinksStore.map(link => {
                 const typeIcon = link.type === 'paste' ? '<i class="bi bi-file-text"></i>'
                     : link.type === 'page' ? '<i class="bi bi-file-code"></i>'
                     : link.type === 'image' ? '<i class="bi bi-image"></i>'
@@ -299,8 +351,61 @@
                 const data = await res.json();
                 renderActiveLinks(data.activeLinks || []);
                 renderExpiredLinks(data.expiredLinks || []);
+
+                if (data.nextCursor) {
+                    startBackgroundCleanup(data.nextCursor);
+                }
             } catch (e) {
                 document.getElementById('active-loading').innerHTML = '<p style="color:#e24b4b;">데이터 로드 중 오류가 발생했습니다.</p>';
+            }
+        }
+
+        async function startBackgroundCleanup(cursor) {
+            document.getElementById('cleanup-container').style.display = 'block';
+            await runCleanupStep(cursor);
+        }
+
+        async function runCleanupStep(cursor) {
+            try {
+                const res = await fetch('/api/v1/admin/cleanup-step', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cursor })
+                });
+                if (!res.ok) throw new Error('Cleanup step failed');
+                
+                const data = await res.json();
+                totalProcessed += data.processedCount;
+                
+                // Update stats UI
+                document.getElementById('cleanup-stats').textContent = `${totalProcessed} keys scanned`;
+                
+                // Update table with newly found active links
+                if (data.activeFound && data.activeFound.length > 0) {
+                    renderActiveLinks(data.activeFound, true);
+                }
+
+                if (data.nextCursor) {
+                    // Update progress bar mockup (since we don't know total, we just animate it)
+                    const progress = Math.min(95, (totalProcessed / (totalProcessed + 100)) * 100);
+                    document.getElementById('progress-fill').style.width = `${progress}%`;
+                    
+                    // Call next step with a small delay to keep UI smooth
+                    setTimeout(() => runCleanupStep(data.nextCursor), 100);
+                } else {
+                    // Finished
+                    document.getElementById('progress-fill').style.width = '100%';
+                    document.getElementById('cleanup-status-text').textContent = '링크 정리 및 로드 완료';
+                    setTimeout(() => {
+                        const container = document.getElementById('cleanup-container');
+                        container.style.transition = 'opacity 1s ease';
+                        container.style.opacity = '0';
+                        setTimeout(() => container.style.display = 'none', 1000);
+                    }, 3000);
+                }
+            } catch (e) {
+                console.error('Cleanup error:', e);
+                document.getElementById('cleanup-status-text').textContent = '정리 중 오류 발생';
             }
         }
 

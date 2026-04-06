@@ -111,6 +111,10 @@ app.get('/api/v1/admin/dashboard-data', async (c) => {
   return await handleAdminDashboardData(c);
 });
 
+app.post('/api/v1/admin/cleanup-step', async (c) => {
+  return await handleAdminCleanupStep(c);
+});
+
 // Main Pages
 app.get('/', async (c) => {
   return await serveMainPage(c);
@@ -587,33 +591,33 @@ async function handleAdminDashboardData(c) {
   if (!isAdmin(c)) return c.json({ success: false, reason: 'Unauthorized' }, 401);
   const env = c.env;
 
-  // Read all KV pairs, collect active ones and expired ones separately
+  // Read first batch of KV pairs (limit 50) for immediate display
   let activeLinks = [];
-  let expiredToArchive = [];
-  let cursor = null;
-  do {
-    const list = await env.vialinks.list({ cursor });
-    for (const kvKey of list.keys) {
-      const dataStr = await env.vialinks.get(kvKey.name);
-      if (!dataStr) continue;
-      try {
-        const data = JSON.parse(dataStr);
-        if (data.expires_at && new Date(data.expires_at) < new Date()) {
-          // Collect expired links for background archiving (non-blocking)
-          expiredToArchive.push({ key: kvKey.name, data });
-        } else {
-          activeLinks.push({ key: kvKey.name, ...data, clicks: 0 });
-        }
-      } catch (e) { }
-    }
-    cursor = list.cursor;
-  } while (cursor);
+  const list = await env.vialinks.list({ limit: 50 });
+
+  for (const kvKey of list.keys) {
+    const dataStr = await env.vialinks.get(kvKey.name);
+    if (!dataStr) continue;
+    try {
+      const data = JSON.parse(dataStr);
+      // We don't filter expired here yet, just show them; cleanup will handle it soon
+      activeLinks.push({ key: kvKey.name, ...data, clicks: 0 });
+    } catch (e) { }
+  }
 
   activeLinks.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-  // Query analytics click counts
+  // Query analytics click counts for this batch
   if (env.STATS && activeLinks.length > 0) {
-    const query = `SELECT sum(_sample_interval) as clicks, blob2 as uid, blob1 as link_key FROM vialinks_prod GROUP BY blob2, blob1`;
+    const uids = activeLinks.map(l => l.uid).filter(id => id && id !== 'legacy');
+    const keys = activeLinks.map(l => l.key).filter((_, i) => !activeLinks[i].uid || activeLinks[i].uid === 'legacy');
+
+    let query = `SELECT sum(_sample_interval) as clicks, blob2 as uid, blob1 as link_key FROM vialinks_prod WHERE `;
+    let conditions = [];
+    if (uids.length > 0) conditions.push(`blob2 IN (${uids.map(id => `'${id}'`).join(',')})`);
+    if (keys.length > 0) conditions.push(`blob1 IN (${keys.map(k => `'${k}'`).join(',')})`);
+    query += conditions.join(' OR ') + ` GROUP BY blob2, blob1`;
+
     try {
       const queryResult = await queryAnalytics(env, query);
       if (queryResult && queryResult.data) {
@@ -641,21 +645,79 @@ async function handleAdminDashboardData(c) {
     } catch (e) { console.error("D1 Error", e); }
   }
 
-  // Archive expired links in background without blocking the response
-  if (expiredToArchive.length > 0) {
-    c.executionCtx.waitUntil(
-      (async () => {
-        for (const { key, data } of expiredToArchive) {
-          try {
-            const archived = await archiveLinkToD1(env, key, data);
-            if (archived) await env.vialinks.delete(key);
-          } catch (e) { console.error('Background archive error:', e); }
+  return c.json({
+    success: true,
+    activeLinks,
+    expiredLinks,
+    nextCursor: list.list_complete ? null : list.cursor
+  });
+}
+
+async function handleAdminCleanupStep(c) {
+  if (!isAdmin(c)) return c.json({ success: false, reason: 'Unauthorized' }, 401);
+  const env = c.env;
+  const { cursor } = await c.req.json();
+
+  let activeFound = [];
+  let archivedCount = 0;
+  let processedCount = 0;
+
+  const list = await env.vialinks.list({ cursor, limit: 50 });
+
+  for (const kvKey of list.keys) {
+    processedCount++;
+    const dataStr = await env.vialinks.get(kvKey.name);
+    if (!dataStr) continue;
+    try {
+      const data = JSON.parse(dataStr);
+      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+        const archived = await archiveLinkToD1(env, kvKey.name, data);
+        if (archived) {
+          await env.vialinks.delete(kvKey.name);
+          archivedCount++;
         }
-      })()
-    );
+      } else {
+        activeFound.push({ key: kvKey.name, ...data, clicks: 0 });
+      }
+    } catch (e) { }
   }
 
-  return c.json({ success: true, activeLinks, expiredLinks });
+  // Fetch clicks for active links found in this batch
+  if (env.STATS && activeFound.length > 0) {
+    const uids = activeFound.map(l => l.uid).filter(id => id && id !== 'legacy');
+    const keys = activeFound.map(l => l.key).filter((_, i) => !activeFound[i].uid || activeFound[i].uid === 'legacy');
+
+    let query = `SELECT sum(_sample_interval) as clicks, blob2 as uid, blob1 as link_key FROM vialinks_prod WHERE `;
+    let conditions = [];
+    if (uids.length > 0) conditions.push(`blob2 IN (${uids.map(id => `'${id}'`).join(',')})`);
+    if (keys.length > 0) conditions.push(`blob1 IN (${keys.map(k => `'${k}'`).join(',')})`);
+    query += conditions.join(' OR ') + ` GROUP BY blob2, blob1`;
+
+    try {
+      const queryResult = await queryAnalytics(env, query);
+      if (queryResult && queryResult.data) {
+        const clicksMap = new Map();
+        queryResult.data.forEach(row => {
+          const count = Number(row.clicks) || 0;
+          if (row.uid && row.uid !== 'legacy') clicksMap.set(row.uid, count);
+          else if (row.link_key) clicksMap.set(row.link_key, count);
+        });
+        activeFound.forEach(link => {
+          link.clicks = (link.uid && link.uid !== 'legacy')
+            ? (clicksMap.get(link.uid) || 0)
+            : (clicksMap.get(link.key) || 0);
+        });
+      }
+    } catch (e) { console.error("Failed to query Analytics Engine:", e); }
+  }
+
+  return c.json({
+    success: true,
+    activeFound,
+    nextCursor: list.list_complete ? null : list.cursor,
+    archivedCount,
+    processedCount
+  });
 }
 
 async function handleAdminLogin(c) {
