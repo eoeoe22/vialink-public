@@ -2,12 +2,13 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import QRCode from 'qrcode';
+import { timingSafeEqual, createHash } from 'node:crypto';
 
 const app = new Hono();
 
 // Reserved keywords that cannot be used as keys to prevent conflicts with system routes
 const RESERVED_KEYWORDS = [
-  'api', 'admin', 'admin-post', 'utils', 'static', 'assets', 'public', 'dashboard', 'login', 'logout',
+  'api', 'admin', 'admin-post', 'static', 'assets', 'public', 'dashboard', 'login', 'logout',
   'favicon.jpg', 'index.html', 'index.css', '404.css', '404.js', 'robots.txt', 'sitemap.xml', 'ads.txt',
   'utils.html', 'health', 'status', 'home'
 ];
@@ -124,11 +125,6 @@ app.get('/index.html', async (c) => {
   return await serveMainPage(c);
 });
 
-// Redirect /utils to /utils.html (which is served by Assets)
-app.get('/utils', (c) => {
-  return c.redirect('/utils.html');
-});
-
 // Short URL redirection (Catch-all for paths longer than 1 character)
 app.get('/:key', async (c) => {
   const key = decodeURIComponent(c.req.param('key'));
@@ -206,6 +202,16 @@ function normalizeUrl(url) {
   return 'https://' + url;
 }
 
+// Check if the URL is a valid web URL (http or https)
+function isValidWebUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 // Handle creating short URLs
 async function handleCreateShortUrl(c) {
   const env = c.env;
@@ -219,9 +225,7 @@ async function handleCreateShortUrl(c) {
 
     url = normalizeUrl(url);
 
-    try {
-      new URL(url);
-    } catch {
+    if (!isValidWebUrl(url)) {
       return c.json({ status: false, reason: '유효하지 않은 URL 형식입니다' }, 400);
     }
 
@@ -536,7 +540,9 @@ async function verifyTurnstile(token, secretKey) {
 function isAdmin(c) {
   const env = c.env;
   if (!env.ADMIN_PW) return false;
-  return getCookie(c, 'admin_session') === env.ADMIN_PW;
+  const session = getCookie(c, 'admin_session');
+  if (!session) return false;
+  return secureCompare(session, env.ADMIN_PW);
 }
 
 async function handleAdminPage(c) {
@@ -731,7 +737,7 @@ async function handleAdminLogin(c) {
       return c.json({ success: false, reason: '보안 확인이 필요합니다' }, 400);
     }
 
-    if (body.password === env.ADMIN_PW) {
+    if (secureCompare(body.password, env.ADMIN_PW)) {
       setCookie(c, 'admin_session', env.ADMIN_PW, {
         path: '/',
         httpOnly: true,
@@ -840,7 +846,11 @@ async function handleAdminUpdateLink(c, key) {
       data.content = body.content;
     } else if (data.type === 'url') {
       if (!body.url) return c.json({ success: false, reason: 'URL이 필요합니다' }, 400);
-      data.url = normalizeUrl(body.url);
+      const normalizedUrl = normalizeUrl(body.url);
+      if (!isValidWebUrl(normalizedUrl)) {
+        return c.json({ success: false, reason: '유효하지 않은 URL 형식입니다' }, 400);
+      }
+      data.url = normalizedUrl;
     } else {
       return c.json({ success: false, reason: '수정할 수 없는 타입입니다' }, 400);
     }
@@ -1004,9 +1014,22 @@ async function handleLookup(c) {
 }
 
 // Utility functions
+function secureCompare(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const hashA = createHash('sha256').update(a).digest();
+  const hashB = createHash('sha256').update(b).digest();
+  return timingSafeEqual(hashA, hashB);
+}
+
 function escapeHtml(text) {
   if (!text) return text;
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function safeJsonStringify(obj) {
+  return JSON.stringify(obj)
+    .replace(/</g, '\\u003c')
+    .replace(/\//g, '\\/');
 }
 
 async function servePastePage(c, content, key) {
@@ -1053,9 +1076,9 @@ async function serveErrorPage(c, reason) {
   } catch (e) {
     console.error('Failed to load error.html from assets:', e);
     // Fallback error page
-    return c.html(`<!DOCTYPE html><html><body><h1>Error</h1><p>${reason}</p></body></html>`, 404);
+    return c.html(`<!DOCTYPE html><html><body><h1>Error</h1><p>${escapeHtml(reason)}</p></body></html>`, 404);
   }
-  const html = errorHtml.replace('{{REASON}}', reason);
+  const html = errorHtml.replace('{{REASON}}', escapeHtml(reason));
   return c.html(html, 404);
 }
 
@@ -1069,7 +1092,7 @@ async function servePasswordPage(c, key, type, encData = null) {
   }
   let html = passwordHtml.replace(/\{\{KEY\}\}/g, key).replace(/\{\{TYPE\}\}/g, type);
   if (encData) {
-    html = html.replace('/*{{ENCRYPTED_DATA_JSON}}*/ null', JSON.stringify(encData)).replace('{{IS_ENCRYPTED}}', 'true');
+    html = html.replace('/*{{ENCRYPTED_DATA_JSON}}*/ null', safeJsonStringify(encData)).replace('{{IS_ENCRYPTED}}', 'true');
   } else {
     html = html.replace('{{IS_ENCRYPTED}}', 'false').replace('/*{{ENCRYPTED_DATA_JSON}}*/ null', 'null');
   }
