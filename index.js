@@ -478,13 +478,24 @@ async function handleRedirect(c, key) {
       return await serveFilePage(c, key, linkData, isPdf);
     }
 
+    let safeUrl = '';
+    let displayDomain = 'VIALinks';
+    try {
+      const parsed = new URL(linkData.url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        safeUrl = parsed.href;
+        displayDomain = parsed.hostname;
+      }
+    } catch (e) { }
+
+    if (!safeUrl) {
+      return await serveErrorPage(c, '유효하지 않은 URL입니다 (http/https만 허용)');
+    }
+
     const userAgent = c.req.header('User-Agent') || '';
     if (isCrawler(userAgent)) {
-      const targetUrl = linkData.url;
-      let displayDomain = 'VIALinks';
-      try {
-        displayDomain = new URL(targetUrl).hostname;
-      } catch (e) { }
+      const escUrl = escapeHtml(safeUrl);
+      const escDomain = escapeHtml(displayDomain);
 
       const html = `
 <!DOCTYPE html>
@@ -492,20 +503,20 @@ async function handleRedirect(c, key) {
 <head>
   <meta charset="utf-8">
   <title>VIALinks</title>
-  <meta property="og:title" content="${displayDomain}">
-  <meta property="og:description" content="${targetUrl}">
+  <meta property="og:title" content="${escDomain}">
+  <meta property="og:description" content="${escUrl}">
   <meta property="og:image" content="https://sekaich.at/images/etc/viapreview.png">
   <meta name="theme-color" content="#87CEEB">
-  <meta http-equiv="refresh" content="0;url=${targetUrl}">
+  <meta http-equiv="refresh" content="0;url=${escUrl}">
 </head>
 <body>
-  <p>Redirecting to <a href="${targetUrl}">${targetUrl}</a>...</p>
+  <p>Redirecting to <a href="${escUrl}" rel="noopener noreferrer">${escUrl}</a>...</p>
 </body>
 </html>`;
       return c.html(html);
     }
 
-    return c.redirect(linkData.url, 302);
+    return c.redirect(safeUrl, 302);
 
   } catch (error) {
     console.error('Error handling redirect:', error);

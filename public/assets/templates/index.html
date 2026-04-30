@@ -573,6 +573,16 @@
             }
         };
 
+        const escapeHtml = (text) => {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+
         const copy = (text) => {
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(text);
@@ -1000,10 +1010,18 @@
                             </a>
                         `;
                     } else if (data.type === 'url') {
+                        let safeHref = '';
+                        try {
+                            const parsed = new URL(data.url);
+                            if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+                                safeHref = parsed.href;
+                            }
+                        } catch (e) {}
+                        const escHref = escapeHtml(safeHref);
                         html = `
                             <div style="margin-bottom: 15px;">
                                 <p style="color: #666; margin-bottom: 5px;">리디렉션 목적지:</p>
-                                <a href="${data.url}" target="_blank" style="font-size: 1.1em; color: #4B70E2; text-decoration: none; word-break: break-all;">${data.url}</a>
+                                <a href="${escHref}" target="_blank" rel="noopener noreferrer" style="font-size: 1.1em; color: #4B70E2; text-decoration: none; word-break: break-all;">${escHref}</a>
                             </div>
 
                         `;
